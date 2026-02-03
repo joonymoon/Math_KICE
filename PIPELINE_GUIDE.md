@@ -7,16 +7,16 @@
 │                              전체 파이프라인 흐름                                    │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 
-  [1] PDF 수집          [2] 자동 추출           [3] 검수            [4] 발송
+  [1] PDF 수집          [2] 자동 처리           [3] 검수            [4] 발송
   ─────────────        ─────────────          ─────────────       ─────────────
 
-  KICE 공식 사이트      Make.com               Notion              카카오톡
-       │               시나리오 A/B            검수 대시보드         채널 메시지
+  KICE 공식 사이트      Python 스크립트         Notion              카카오톡
+       │               (run.py)               검수 대시보드         채널 메시지
        │                    │                     │                    │
        ▼                    ▼                     ▼                    ▼
   ┌─────────┐         ┌─────────┐           ┌─────────┐          ┌─────────┐
   │ Google  │────────►│ PDF     │──────────►│ 사람    │─────────►│ 사용자  │
-  │ Drive   │         │ 파싱    │           │ 검수    │          │ 앱/웹   │
+  │ Drive   │         │ 변환    │           │ 검수    │          │ 앱/웹   │
   └─────────┘         └─────────┘           └─────────┘          └─────────┘
        │                    │                     │                    │
        │                    ▼                     ▼                    │
@@ -36,41 +36,51 @@
 |------|--------|-----|------|
 | 1 | Supabase | https://supabase.com | DB + Storage |
 | 2 | Google Drive | https://drive.google.com | PDF 저장소 |
-| 3 | Make.com | https://make.com | 자동화 |
+| 3 | Google Cloud | https://console.cloud.google.com | API 인증 |
 | 4 | Notion | https://notion.so | 검수 대시보드 |
-| 5 | CloudConvert | https://cloudconvert.com | PDF→이미지 |
-| 6 | PDF.co | https://pdf.co | PDF→텍스트 |
-| 7 | 카카오 개발자 | https://developers.kakao.com | 메시지 발송 |
+| 5 | 카카오 개발자 | https://developers.kakao.com | 메시지 발송 |
 
-### 1.2 Supabase 설정
+### 1.2 Python 환경 설정
+
+```bash
+# 1. 프로젝트 폴더로 이동
+cd Math_KICE
+
+# 2. 의존성 설치
+pip install -r requirements.txt
+
+# 3. 환경 변수 설정
+copy .env.example .env    # Windows
+cp .env.example .env      # Mac/Linux
+
+# 4. .env 파일 편집하여 API 키 입력
+```
+
+### 1.3 Supabase 설정
 
 1. 프로젝트 생성 (Region: Seoul)
 2. SQL Editor에서 `schema_v2.sql` 실행
 3. API 키 복사 → `.env` 파일
 
 ```bash
-# .env 파일 생성
-cp .env.example .env
-# SUPABASE_URL, SUPABASE_KEY 입력
+# .env 파일에 입력
+SUPABASE_URL=https://xxxxxxxx.supabase.co
+SUPABASE_KEY=eyJhbGciOiJI...
 ```
 
-### 1.3 Google Drive 폴더 구조 생성
+### 1.4 Google Drive 폴더 구조
 
 ```
-/KICE/
+/KICE_Math/
 ├── 2022/
 │   ├── CSAT/
 │   ├── KICE6/
 │   └── KICE9/
 ├── 2023/
-│   ├── CSAT/
-│   ├── KICE6/
-│   └── KICE9/
+│   └── ...
 ├── 2024/
 │   └── ...
-├── 2025/
-│   └── ...
-└── _pages/          ← 자동 생성됨 (PDF→이미지)
+└── 2025/
     └── ...
 ```
 
@@ -99,180 +109,162 @@ cp .env.example .env
 
 ### 2.3 업로드
 
-해당 연도/시험 폴더에 업로드:
+해당 폴더에 PDF 업로드 후 `python run.py` 실행
+
+---
+
+## Step 3: Python 워크플로우 이해
+
+### 3.1 전체 워크플로우 (`src/workflow.py`)
+
 ```
-/KICE/2024/CSAT/2024_CSAT_PROBLEM.pdf
-/KICE/2024/CSAT/2024_CSAT_ANSWER.pdf
+┌────────────────────────────────────────────────────────────────────┐
+│                         KICEWorkflow 클래스                         │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  [1] Google Drive        파일 목록 조회, 새 파일 감지               │
+│         │                                                          │
+│         ▼                                                          │
+│  [2] 파일 다운로드       PDF를 로컬에 저장                          │
+│         │                                                          │
+│         ▼                                                          │
+│  [3] PDF 변환           PyMuPDF로 PNG 이미지 생성                   │
+│         │                                                          │
+│         ▼                                                          │
+│  [4] 텍스트 추출        PDF에서 텍스트 추출                         │
+│         │                                                          │
+│         ▼                                                          │
+│  [5] 메타데이터 파싱    파일명에서 연도/시험 정보 추출              │
+│         │                                                          │
+│         ▼                                                          │
+│  [6] Supabase 저장      problems 테이블에 데이터 저장               │
+│         │                                                          │
+│         ▼                                                          │
+│  [7] Notion 카드 생성   검수용 카드 자동 생성                       │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 각 모듈 설명
+
+#### `src/google_drive_service.py`
+```python
+# 주요 기능
+- OAuth 인증 및 토큰 관리
+- 폴더 내 파일 목록 조회
+- PDF 파일 다운로드
+- 이미지 파일 업로드
+```
+
+#### `src/pdf_converter.py`
+```python
+# 주요 기능
+- PDF → PNG 변환 (PyMuPDF 사용)
+- PDF 텍스트 추출
+- 파일명 파싱 (연도, 시험 유형 추출)
+```
+
+#### `src/notion_service.py`
+```python
+# 주요 기능
+- 검수 카드 생성
+- 상태 업데이트
+- 검수 완료 문제 조회
+- Supabase 동기화
+```
+
+#### `src/supabase_service.py`
+```python
+# 주요 기능
+- 문제 데이터 CRUD
+- 힌트 관리
+- 처리 이력 관리
+- 통계 조회
+```
+
+### 3.3 실행 명령어
+
+```bash
+# 한 번 실행 (새 파일 처리)
+python run.py
+
+# 스케줄러 모드 (30분마다 자동 실행)
+python run.py --scheduler
+
+# 스케줄러 간격 변경 (60분마다)
+python run.py --scheduler --interval 60
+
+# 로컬 PDF 파일 처리 (Google Drive 없이)
+python run.py --local "경로/파일.pdf"
+
+# 통계 확인
+python run.py --stats
+
+# Notion 동기화만 실행
+python run.py --sync
+
+# 설정 확인
+python run.py --check
 ```
 
 ---
 
-## Step 3: Make.com 시나리오 설정
+## Step 4: Notion 검수 대시보드
 
-### 3.1 시나리오 A: 문제 PDF 처리
+### 4.1 Database 구조
 
-#### 모듈 구성 순서:
+| 속성 | 타입 | 설명 |
+|------|------|------|
+| 문제 ID | 제목 | 고유 식별자 (예: 2024_CSAT) |
+| 연도 | 숫자 | 시험 연도 |
+| 시험 | 선택 | CSAT, KICE6, KICE9 |
+| 문항번호 | 숫자 | 문제 번호 |
+| 배점 | 숫자 | 3 또는 4 |
+| 상태 | 선택 | 검수 필요, 검수 완료, 발송 준비 |
+| 원본링크 | URL | Google Drive PDF 링크 |
+| 이미지폴더 | URL | 변환된 이미지 폴더 |
 
-```
-[1] Google Drive     [2] Set Variables    [3] CloudConvert
-    Watch Files  ───►    파일명 파싱   ───►    PDF→PNG
-        │                                         │
-        │                                         ▼
-[6] Notion          [5] Supabase         [4] PDF.co
-    Create Card  ◄───    Upsert      ◄───    텍스트 추출
-                            ▲                    │
-                            │                    ▼
-                     [5-1] Iterator      [4-1] JavaScript
-                                              문항 분리
-```
-
-#### 상세 설정:
-
-**[1] Google Drive - Watch Files**
-- Folder: `/KICE/` (하위 폴더 포함)
-- Filter: `{{contains(fileName; "_PROBLEM")}}`
-
-**[2] Set Variables**
-```
-year = {{substring(1.fileName; 0; 4)}}
-exam = {{get(split(1.fileName; "_"); 1)}}
-drive_link = {{1.webViewLink}}
-```
-
-**[3] CloudConvert - Create Job**
-- PDF → PNG (200 dpi)
-- Output folder: `/KICE/_pages/{{year}}/{{exam}}/`
-
-**[4] PDF.co - PDF to Text**
-- Input: Google Drive File ID
-
-**[4-1] JavaScript - 문항 분리**
-- `make_js_modules.js`의 "모듈 1" 코드 복사
-
-**[5] Iterator**
-- Source: `{{4-1.items}}`
-
-**[5-1] Supabase - Insert Row**
-- Table: `problems`
-- ON CONFLICT: `problem_id`
-
-**[6] Notion - Create Database Item**
-- Database: `KICE Problem Review`
-
----
-
-### 3.2 시나리오 B: 정답 PDF 처리
-
-#### 모듈 구성:
-
-```
-[1] Google Drive     [2] Set Variables    [3] PDF.co
-    Watch Files  ───►    파일명 파싱   ───►    텍스트 추출
-                                                  │
-                                                  ▼
-                     [5] Supabase         [4] JavaScript
-                         Update      ◄───     정답표 파싱
-                            ▲                    │
-                            │                    ▼
-                     [4-1] Iterator
-```
-
-**[1] Google Drive - Watch Files**
-- Filter: `{{contains(fileName; "_ANSWER")}}`
-
-**[3] PDF.co - PDF to Text**
-**[4] JavaScript - 정답표 파싱**
-- `make_js_modules.js`의 "모듈 2" 코드 복사
-
-**[5] Supabase - Update Row**
-- Filter: `year = {{item.year}} AND exam = {{item.exam}} AND question_no = {{item.question_no}}`
-- Update: `answer = {{item.answer}}`
-
----
-
-### 3.3 시나리오 C: 검수 완료 동기화 (선택)
-
-```
-[1] Notion Watch    [2] Supabase Update    [3] Supabase Insert
-    (Status=Ready) ───►    problems     ───►    hints
-```
-
----
-
-## Step 4: Notion 검수 대시보드 설정
-
-### 4.1 Database 생성
-
-1. 새 페이지 → Database - Full page
-2. 이름: `KICE Problem Review`
-3. `notion_template.md` 참고하여 Properties 추가
-
-### 4.2 Make.com Integration 연결
-
-1. Notion Settings → Connections
-2. Make 검색 → 연결
-3. Database에 권한 부여
-
-### 4.3 Views 생성
-
-1. **Needs Review** (Board) - 기본 작업 뷰
-2. **Ready Export** (Table) - 완료 항목
-3. **By Year** (Table) - 연도별 확인
-
----
-
-## Step 5: 검수 작업 (수동)
-
-### 5.1 검수 프로세스
+### 4.2 검수 프로세스
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Notion "Needs Review" 보드에서 카드 클릭                        │
+│  Notion "검수 필요" 보드에서 카드 클릭                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  1. 자동 추출 확인                                               │
-│     - Score(auto), Answer(auto) 확인                            │
-│     - Extract Text로 문제 내용 파악                              │
+│     - 추출된 텍스트 확인                                         │
+│     - 이미지 폴더 링크 클릭하여 이미지 확인                       │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  2. 분류 확정                                                    │
-│     - Subject(verify): Math1 / Math2                            │
-│     - Unit(verify): 단원 선택                                    │
-│     - Score(verify): 배점 확정                                   │
-│     - Answer(verify): 정답 확정                                  │
+│     - 과목: Math1 / Math2                                       │
+│     - 단원: 세부 단원 선택                                       │
+│     - 배점: 3점 / 4점                                           │
+│     - 정답: 정답 입력                                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  3. 이미지 확인                                                  │
-│     - Page Images Folder 링크 클릭                               │
-│     - 해당 문항 페이지 찾기                                       │
-│     - Img Page Refs에 페이지 번호 입력 (예: p03-p04)              │
+│  3. 출제의도 & 힌트 작성                                         │
+│     - 출제의도: 이 문제의 핵심 개념                              │
+│     - 힌트 1: 개념 방향                                         │
+│     - 힌트 2: 핵심 전환                                         │
+│     - 힌트 3: 결정적 한 줄                                      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. 출제의도 & 힌트 작성                                         │
-│     - Intent 1: 첫 번째 줄                                       │
-│     - Intent 2: 두 번째 줄                                       │
-│     - Hint 1: 개념 방향                                          │
-│     - Hint 2: 핵심 전환                                          │
-│     - Hint 3: 결정적 한 줄                                       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  5. 완료                                                         │
-│     - Status → "Ready"                                          │
-│     - (자동) Supabase 동기화                                     │
+│  4. 완료                                                         │
+│     - 상태 → "검수 완료"                                        │
+│     - python run.py --sync 실행 → Supabase 자동 동기화          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 힌트 작성 가이드
+### 4.3 힌트 작성 가이드
 
 | 단계 | 이름 | 역할 | 예시 |
 |------|------|------|------|
@@ -282,9 +274,9 @@ drive_link = {{1.webViewLink}}
 
 ---
 
-## Step 6: 카카오톡 발송 설정
+## Step 5: 카카오톡 발송 설정
 
-### 6.1 카카오 개발자 설정
+### 5.1 카카오 개발자 설정
 
 1. https://developers.kakao.com 로그인
 2. 애플리케이션 생성
@@ -292,40 +284,50 @@ drive_link = {{1.webViewLink}}
 4. 카카오 로그인 활성화
 5. 동의항목: `talk_message` 필수
 
-### 6.2 카카오톡 채널 개설
+### 5.2 카카오톡 채널 개설
 
 1. https://center-pf.kakao.com
 2. 채널 생성
 3. 카카오 개발자 앱과 연결
 
-### 6.3 발송 테스트
+### 5.3 발송 테스트
 
 ```python
-# main.py 실행
+# main.py의 기존 코드 사용
 python main.py
 ```
 
 ---
 
-## Step 7: 일일 자동 발송 설정
+## Step 6: 자동 실행 설정 (선택)
 
-### 7.1 Supabase Cron 설정
+### 6.1 Windows 작업 스케줄러
 
-```sql
--- 매일 00:00에 스케줄 생성
-SELECT cron.schedule(
-  'create-daily-schedules',
-  '0 0 * * *',
-  $$SELECT create_daily_schedules()$$
-);
+1. `작업 스케줄러` 열기
+2. `기본 작업 만들기` 클릭
+3. 트리거: 매일 오전 7시
+4. 동작: `python run.py` 실행
+
+### 6.2 Mac/Linux Cron
+
+```bash
+# crontab 편집
+crontab -e
+
+# 매일 오전 7시 실행
+0 7 * * * cd /path/to/Math_KICE && python run.py
 ```
 
-### 7.2 Make.com 발송 시나리오
+### 6.3 스케줄러 모드 사용
 
-```
-[1] Schedule         [2] Supabase          [3] HTTP
-    (매 분)      ───►    Query         ───►    카카오 API
-                     (발송 대기 조회)
+```bash
+# 백그라운드에서 30분마다 실행
+nohup python run.py --scheduler &
+
+# 또는 tmux/screen 사용
+tmux new -s kice
+python run.py --scheduler
+# Ctrl+B, D 로 분리
 ```
 
 ---
@@ -334,20 +336,32 @@ SELECT cron.schedule(
 
 ```
 Math_KICE/
-├── schema_v2.sql           # DB 스키마 (Make 최적화)
-├── sample_data.sql         # 30문항 예시 데이터
-├── main.py                 # Python 서비스 코드
-├── kakao_service.py        # 카카오톡 발송 서비스
-├── requirements.txt        # Python 의존성
-├── .env.example            # 환경변수 템플릿
+├── run.py                      # 메인 실행 스크립트
+├── main.py                     # 기존 서비스 코드
+├── kakao_service.py            # 카카오톡 발송 서비스
+├── requirements.txt            # Python 의존성
+├── .env.example                # 환경변수 템플릿
 │
-├── make_scenarios.md       # Make.com 시나리오 설계
-├── make_js_modules.js      # Make JavaScript 코드 (복붙용)
-├── notion_template.md      # Notion DB 템플릿
+├── src/                        # 새 모듈 (Make.com 대체)
+│   ├── __init__.py
+│   ├── config.py               # 설정 관리
+│   ├── google_drive_service.py # Google Drive API
+│   ├── pdf_converter.py        # PDF → PNG 변환
+│   ├── notion_service.py       # Notion API
+│   ├── supabase_service.py     # Supabase API
+│   └── workflow.py             # 워크플로우 관리
 │
-├── SETUP_GUIDE.md          # 가입 가이드
-├── ARCHITECTURE.md         # 시스템 아키텍처
-└── PIPELINE_GUIDE.md       # 이 문서
+├── downloads/                  # PDF 다운로드 (자동 생성)
+├── output/                     # 이미지 출력 (자동 생성)
+├── credentials/                # 인증 정보 (자동 생성)
+│
+├── schema_v2.sql               # DB 스키마
+├── sample_data.sql             # 샘플 데이터
+├── notion_template.md          # Notion DB 템플릿
+│
+├── BEGINNER_GUIDE.md           # 초보자 가이드
+├── SETUP_GUIDE.md              # 설정 가이드
+└── PIPELINE_GUIDE.md           # 이 문서
 ```
 
 ---
@@ -356,33 +370,35 @@ Math_KICE/
 
 | 단계 | 작업 | 예상 시간 |
 |------|------|----------|
-| 환경 준비 | 계정 가입 + 설정 | 2~3시간 |
+| 환경 준비 | Python 설치 + 계정 가입 + 설정 | 1~2시간 |
 | PDF 수집 | 16개 파일 다운로드 | 30분 |
-| Make 시나리오 | 2개 시나리오 구축 | 2~3시간 |
-| 자동 추출 | Make 실행 (자동) | 1시간 |
+| 자동 추출 | python run.py 실행 | 30분 |
 | 검수 | 480문항 × 2분 | 16시간 (2~3일) |
 | 카카오 설정 | 채널 + 연동 | 1~2시간 |
-| **총계** | | **약 25시간** |
+| **총계** | | **약 20시간** |
 
 ---
 
 ## 트러블슈팅
 
-### PDF 텍스트 추출 실패
-- 스캔본인 경우 OCR 필요
-- PDF.co 대신 Google Cloud Vision OCR 사용
+### Google Drive 인증 실패
+```bash
+# 토큰 삭제 후 재인증
+del credentials\google_token.json
+python run.py
+```
 
-### 문항 분리 오류
-- 정규식 패턴 조정 필요
-- `make_js_modules.js` 수정
+### PDF 변환 오류
+- PDF 파일이 손상되지 않았는지 확인
+- PyMuPDF 설치 확인: `pip install PyMuPDF`
 
-### 정답표 파싱 오류
-- 정답표 형식이 다를 수 있음
-- 수동으로 정답 입력 (Notion에서)
+### Notion 연결 오류
+- Integration이 데이터베이스에 연결되었는지 확인
+- 데이터베이스 ID가 정확한지 확인
 
-### 카카오 메시지 발송 실패
-- 액세스 토큰 만료 → 리프레시
-- 메시지 권한 동의 확인
+### Supabase 연결 오류
+- URL 형식 확인: `https://xxxxxxxx.supabase.co`
+- API 키가 올바른지 확인
 
 ---
 

@@ -29,11 +29,37 @@
 
 ---
 
+## 사전 준비: Custom OAuth 연결
+
+> **중요**: **Custom OAuth Client** 방식을 사용합니다.
+> Google Cloud에서 OAuth 클라이언트를 생성하고 Make.com에 연결합니다.
+
+### Google Drive 연결 설정
+
+**사전 준비 (BEGINNER_GUIDE.md 2장 참고):**
+1. Google Cloud Console에서 프로젝트 생성
+2. Google Drive API 활성화
+3. OAuth 동의 화면 설정 → **프로덕션으로 게시**
+4. OAuth 클라이언트 ID 생성 (웹 애플리케이션)
+5. 리디렉션 URI: `https://www.integromat.com/oauth/cb/google/`
+
+**Make.com에서 Google Drive 모듈 연결:**
+1. 시나리오에서 Google Drive 모듈 추가
+2. Connection에서 `Add` 클릭
+3. **Show advanced settings** 토글 켜기
+4. 입력 정보:
+   - **Client ID**: OAuth 클라이언트 ID
+   - **Client Secret**: 클라이언트 보안 비밀번호
+5. `Sign in with Google` → 권한 허용
+
+---
+
 ## 시나리오 A: 문제 PDF → 문항 레코드 생성
 
 ### A-1. 트리거 & 메타 파싱
 
-#### (1) Google Drive - Watch files
+#### (1) Google Drive - Watch files (Custom OAuth 연결)
+- **Connection**: Custom OAuth 클라이언트 사용 (6.4 참고)
 - **Folder**: `/KICE/` (하위 폴더 포함)
 - **Filter**: 파일명에 `_PROBLEM` 포함
 - **Output**: `fileId`, `fileName`, `webViewLink`
@@ -338,8 +364,16 @@ const circled = {"①":"1","②":"2","③":"3","④":"4","⑤":"5"};
 
 ## Make.com 시나리오 설정 체크리스트
 
+### 사전 준비 (Custom OAuth)
+- [ ] Google Cloud 프로젝트 생성
+- [ ] Google Drive API 활성화
+- [ ] OAuth 동의 화면 설정 → 프로덕션으로 게시
+- [ ] OAuth 클라이언트 ID 생성 (웹 애플리케이션)
+- [ ] 리디렉션 URI 설정: `https://www.integromat.com/oauth/cb/google/`
+- [ ] Client ID, Client Secret 저장
+
 ### 시나리오 A (문제 PDF)
-- [ ] Google Drive 연결
+- [ ] Google Drive 연결 (Custom OAuth 방식)
 - [ ] CloudConvert 계정 연결
 - [ ] PDF.co 계정 연결 (또는 CloudConvert txt 변환)
 - [ ] Supabase 연결 (API Key)
@@ -347,10 +381,16 @@ const circled = {"①":"1","②":"2","③":"3","④":"4","⑤":"5"};
 - [ ] 파일명 규칙 확인: `YYYY_EXAM_PROBLEM.pdf`
 
 ### 시나리오 B (정답 PDF)
-- [ ] Google Drive 연결
+- [ ] Google Drive 연결 (Custom OAuth 방식)
 - [ ] PDF.co 계정 연결
 - [ ] Supabase 연결
 - [ ] 파일명 규칙 확인: `YYYY_EXAM_ANSWER.pdf`
+
+### 연결 문제 해결
+- `Show advanced settings` 토글 켜기
+- Client ID, Client Secret 정확히 입력
+- 리디렉션 URI가 정확한지 확인
+- 앱이 "프로덕션" 상태인지 확인 (테스트 → 7일마다 재인증)
 
 ---
 

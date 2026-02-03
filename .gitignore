@@ -1,4 +1,48 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 환경 설정 (민감 정보)
 .env
+.env.local
+.env.*.local
+
+# 자격 증명
+credentials/
+*.json
+!package.json
+
+# 다운로드/출력 폴더
+downloads/
+output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node.js (혹시 필요할 경우)
 node_modules/
+
+# 로그
+*.log
+logs/
+
+# 테스트
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 빌드
+dist/
+build/
+*.egg-info/
