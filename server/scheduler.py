@@ -390,13 +390,26 @@ class DailyScheduler:
 
 
 # FastAPI router for scheduler endpoints
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 scheduler_router = APIRouter()
+
+
+def _require_auth(request: Request):
+    """Require authenticated session for scheduler admin endpoints"""
+    from server.users import UserService
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = UserService().get_user_by_session(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Session expired")
+    return user
 
 
 @scheduler_router.post("/create-daily")
 async def create_daily_schedules(request: Request):
-    """Manually trigger daily schedule creation"""
+    """Manually trigger daily schedule creation (requires auth)"""
+    _require_auth(request)
     sched = DailyScheduler()
     created = sched.create_all_daily_schedules()
     return {"created": created, "date": date.today().isoformat()}
@@ -404,7 +417,8 @@ async def create_daily_schedules(request: Request):
 
 @scheduler_router.post("/execute")
 async def execute_schedules(request: Request):
-    """Manually trigger pending schedule execution"""
+    """Manually trigger pending schedule execution (requires auth)"""
+    _require_auth(request)
     sched = DailyScheduler()
     stats = sched.execute_pending_schedules()
     return stats
@@ -412,7 +426,8 @@ async def execute_schedules(request: Request):
 
 @scheduler_router.get("/status")
 async def schedule_status(request: Request):
-    """Get today's schedule status"""
+    """Get today's schedule status (requires auth)"""
+    _require_auth(request)
     supabase = SupabaseService()
     today = date.today().isoformat()
 

@@ -4,12 +4,24 @@ Provides API endpoints and HTML dashboard for system analytics.
 """
 
 from datetime import date, datetime, timedelta
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
 from src.supabase_service import SupabaseService
 
 router = APIRouter()
+
+
+def _require_auth(request: Request):
+    """Require authenticated session for dashboard endpoints"""
+    from server.users import UserService
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = UserService().get_user_by_session(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Session expired")
+    return user
 
 
 def get_dashboard_stats() -> dict:
@@ -116,14 +128,16 @@ def get_dashboard_stats() -> dict:
 
 
 @router.get("/api")
-async def dashboard_api():
-    """JSON API for dashboard statistics"""
+async def dashboard_api(request: Request):
+    """JSON API for dashboard statistics (requires auth)"""
+    _require_auth(request)
     return get_dashboard_stats()
 
 
 @router.get("", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
-    """HTML dashboard page"""
+    """HTML dashboard page (requires auth)"""
+    _require_auth(request)
     stats = get_dashboard_stats()
 
     # Build year/exam table rows

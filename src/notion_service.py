@@ -178,12 +178,26 @@ class NotionService:
             query_body["filter"] = {"and": filters}
 
         # notion-client 2.x: databases.query() removed, use request() directly
-        response = self.client.request(
-            path=f"databases/{self.database_id}/query",
-            method="POST",
-            body=query_body
-        )
-        return response.get("results", [])
+        # Pagination: Notion API returns max 100 results per page
+        all_results = []
+        has_more = True
+        next_cursor = None
+
+        while has_more:
+            page_body = dict(query_body)
+            if next_cursor:
+                page_body["start_cursor"] = next_cursor
+
+            response = self.client.request(
+                path=f"databases/{self.database_id}/query",
+                method="POST",
+                body=page_body
+            )
+            all_results.extend(response.get("results", []))
+            has_more = response.get("has_more", False)
+            next_cursor = response.get("next_cursor")
+
+        return all_results
 
     def get_ready_problems(self) -> list:
         """검수 완료된 문제 목록 조회"""

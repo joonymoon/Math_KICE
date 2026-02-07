@@ -7,6 +7,8 @@ from fastapi import APIRouter, Request, HTTPException, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
+from html import escape as html_escape
+import json
 import sys
 import os
 from pathlib import Path
@@ -1799,12 +1801,18 @@ async def view_problem(request: Request, problem_id: str):
     # Simple HTML viewer (KakaoTalk webview compatible)
     exam_name = {'CSAT': '수능', 'KICE6': '6월 평가원', 'KICE9': '9월 평가원'}.get(problem_data['exam'], problem_data['exam'])
 
+    # XSS prevention: escape values for HTML context
+    safe = {k: html_escape(str(v or '')) for k, v in problem_data.items()}
+    safe_exam = html_escape(exam_name)
+    # JS string context: use json.dumps for safe embedding
+    js_problem_id = json.dumps(problem_data['problem_id'])
+
     html = f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>{problem_data['year']} {exam_name} #{problem_data['number']}</title>
+    <title>{safe['year']} {safe_exam} #{safe['number']}</title>
     <!-- KaTeX for math rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -2123,17 +2131,17 @@ async def view_problem(request: Request, problem_id: str):
 <body>
     <div class="debug">
         DEBUG: Page loaded successfully<br>
-        Problem ID: {problem_data['problem_id']}<br>
+        Problem ID: {safe['problem_id']}<br>
         Time: <span id="loadTime"></span>
     </div>
 
     <div class="header">
-        <h1>{problem_data['year']} {exam_name}</h1>
-        <p>{problem_data['number']}번 문제 | {problem_data['difficulty']} | {problem_data['unit']}</p>
+        <h1>{safe['year']} {safe_exam}</h1>
+        <p>{safe['number']}번 문제 | {safe['difficulty']} | {safe['unit']}</p>
     </div>
 
     <div class="image-container">
-        <img src="{problem_data['image_url']}" alt="문제 이미지" loading="eager" fetchpriority="high" onerror="this.parentElement.innerHTML='<p style=color:red;>이미지를 불러올 수 없습니다</p>'">
+        <img src="{safe['image_url']}" alt="문제 이미지" loading="eager" fetchpriority="high" onerror="this.parentElement.innerHTML='<p style=color:red;>이미지를 불러올 수 없습니다</p>'">
     </div>
 
     <div class="answer-section">
@@ -2156,10 +2164,24 @@ async def view_problem(request: Request, problem_id: str):
     <div id="result" style="display:none;"></div>
 
     <script>
+        // XSS sanitizer for innerHTML content
+        function sanitizeHTML(html) {{
+            if (!html) return '';
+            const d = document.createElement('div');
+            d.innerHTML = html;
+            d.querySelectorAll('script,iframe,object,embed,form,link,meta,base,style').forEach(e => e.remove());
+            d.querySelectorAll('*').forEach(e => {{
+                [...e.attributes].forEach(a => {{
+                    if (a.name.startsWith('on') || (a.name === 'href' && a.value.trimStart().startsWith('javascript:')))
+                        e.removeAttribute(a.name);
+                }});
+            }});
+            return d.innerHTML;
+        }}
         // Debug logging
         console.log('[Viewer] Page loaded');
-        console.log('[Viewer] Problem ID: {problem_data['problem_id']}');
-        console.log('[Viewer] Image URL: {problem_data['image_url']}');
+        console.log('[Viewer] Problem ID:', {js_problem_id});
+        console.log('[Viewer] Image URL:', {json.dumps(problem_data['image_url'])});
 
         document.getElementById('loadTime').textContent = new Date().toLocaleTimeString();
 
@@ -2206,7 +2228,7 @@ async def view_problem(request: Request, problem_id: str):
                     }},
                     credentials: 'include',  // Include cookies for session
                     body: JSON.stringify({{
-                        problem_id: '{problem_data['problem_id']}',
+                        problem_id: {js_problem_id},
                         user_answer: userAnswer
                     }})
                 }});
@@ -2233,7 +2255,7 @@ async def view_problem(request: Request, problem_id: str):
                     setTimeout(() => createConfetti(), 300);
                 }} else {{
                     // Wrong answer - show with shake
-                    html += '<h2>❌ 오답입니다</h2><p>정답: ' + result.correct_answer + '</p>';
+                    html += '<h2>❌ 오답입니다</h2><p>정답: ' + sanitizeHTML(String(result.correct_answer)) + '</p>';
                     setTimeout(() => {{
                         resultDiv.style.animation = 'shake 0.5s';
                         setTimeout(() => resultDiv.style.animation = '', 500);
@@ -2244,7 +2266,7 @@ async def view_problem(request: Request, problem_id: str):
                 if (result.solution && result.solution !== '풀이가 준비되지 않았습니다.') {{
                     html += '<div class="solution-section">';
                     html += '<h3>풀이</h3>';
-                    html += '<div class="math-content">' + result.solution + '</div>';
+                    html += '<div class="math-content">' + sanitizeHTML(result.solution) + '</div>';
                     html += '</div>';
                 }}
 
@@ -2348,7 +2370,7 @@ async def view_problem(request: Request, problem_id: str):
                     }},
                     credentials: 'include',
                     body: JSON.stringify({{
-                        problem_id: '{problem_data['problem_id']}'
+                        problem_id: {js_problem_id}
                     }})
                 }});
 
@@ -2371,7 +2393,7 @@ async def view_problem(request: Request, problem_id: str):
                             <span class="hint-badge" style="background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%);">힌트 ${{nextLevel}}</span>
                             <span>&#128274;</span>
                         </h3>
-                        <p style="color: #6b7280; font-weight: 500;">${{result.message}}</p>
+                        <p style="color: #6b7280; font-weight: 500;">${{sanitizeHTML(result.message)}}</p>
                     `;
                     hintContainer.appendChild(lockedCard);
                     lockedCard.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
@@ -2390,7 +2412,7 @@ async def view_problem(request: Request, problem_id: str):
                         <span class="hint-badge">힌트 ${{nextLevel}}</span>
                         <span>${{getHintIcon(nextLevel)}}</span>
                     </h3>
-                    <p class="math-content">${{result.hint_text}}</p>
+                    <p class="math-content">${{sanitizeHTML(result.hint_text)}}</p>
                 `;
                 hintContainer.appendChild(hintCard);
 
@@ -2523,13 +2545,16 @@ async def submit_answer(request: Request, body: SubmitAnswerRequest):
             print(f"[Submit Answer] Error saving to database: {e}")
             # Continue anyway - don't fail the submission
 
-    return {
+    response_data = {
         "is_correct": is_correct,
-        "correct_answer": correct_answer,
         "solution": solution,
         "score": score,
         "saved": user is not None
     }
+    # Only reveal correct_answer when user got it wrong (needed for UX feedback)
+    if not is_correct:
+        response_data["correct_answer"] = correct_answer
+    return response_data
 
 
 @router.post("/hint/{level}")

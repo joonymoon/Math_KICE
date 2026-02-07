@@ -2,6 +2,24 @@
 // Props: problemData (from server)
 // Requires: KaTeX CSS + JS + auto-render loaded in host page
 
+// HTML sanitizer - strips dangerous tags and event handlers for XSS prevention
+function sanitizeHTML(html) {
+  if (!html) return '';
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  // Remove dangerous elements
+  div.querySelectorAll('script,iframe,object,embed,form,link,meta,base,style').forEach(el => el.remove());
+  // Remove event handler attributes and javascript: URLs
+  div.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      if (attr.name.startsWith('on') || (attr.name === 'href' && attr.value.trimStart().startsWith('javascript:'))) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+  return div.innerHTML;
+}
+
 // KaTeX auto-render helper
 function renderMath(element) {
   if (element && window.renderMathInElement) {
@@ -336,7 +354,7 @@ function ProblemViewer({ problemData }) {
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-yellow-400 text-white text-xs font-bold flex items-center justify-center mt-0.5">
                   {h.level}
                 </span>
-                <div className="text-sm text-yellow-900 math-content" dangerouslySetInnerHTML={{ __html: h.text }} />
+                <div className="text-sm text-yellow-900 math-content" dangerouslySetInnerHTML={{ __html: sanitizeHTML(h.text) }} />
               </div>
             )
           ))}
@@ -375,7 +393,7 @@ function ProblemViewer({ problemData }) {
               {result.solution ? (
                 <div>
                   <div className="font-bold mb-1">풀이:</div>
-                  <div className="opacity-90 math-content" dangerouslySetInnerHTML={{ __html: result.solution }} />
+                  <div className="opacity-90 math-content" dangerouslySetInnerHTML={{ __html: sanitizeHTML(result.solution) }} />
                 </div>
               ) : (
                 <div className="opacity-90">
@@ -398,7 +416,7 @@ function ProblemViewer({ problemData }) {
           {result.is_correct && result.solution && (
             <div className="mt-2 pt-2 border-t border-white/30">
               <div className="text-sm font-bold mb-1">풀이:</div>
-              <div className="text-sm opacity-90 math-content" dangerouslySetInnerHTML={{ __html: result.solution }} />
+              <div className="text-sm opacity-90 math-content" dangerouslySetInnerHTML={{ __html: sanitizeHTML(result.solution) }} />
             </div>
           )}
         </div>
@@ -415,7 +433,9 @@ function ProblemViewer({ problemData }) {
               {problemData.choices.map((choice, index) => {
                 const choiceNum = index + 1;
                 const isSelected = selectedAnswer === choiceNum;
-                const isCorrectAnswer = showResult && result && Number(result.correct_answer) === choiceNum;
+                // correct_answer is only sent on wrong answers; for correct answers, selectedAnswer IS the correct one
+                const correctAns = result?.correct_answer != null ? Number(result.correct_answer) : selectedAnswer;
+                const isCorrectAnswer = showResult && result && correctAns === choiceNum;
                 const isWrongSelected = showResult && isSelected && !result?.is_correct;
 
                 let btnClass = 'bg-white text-gray-700 border-gray-200';

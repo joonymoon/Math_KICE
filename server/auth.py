@@ -164,9 +164,9 @@ async def kakao_callback(
             status_code=400
         )
 
-    # Verify state (CSRF protection)
+    # Verify state (CSRF protection) - reject if either is missing
     stored_state = request.cookies.get("oauth_state")
-    if state and stored_state and state != stored_state:
+    if not state or not stored_state or state != stored_state:
         return HTMLResponse(
             content=get_html_response(
                 "Security Error",
