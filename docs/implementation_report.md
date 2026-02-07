@@ -1,11 +1,11 @@
 # KICE Math System - Implementation Report
-**Date: 2026-02-07 (Updated)**
+**Date: 2026-02-08 (Updated)**
 
 ---
 
 ## Executive Summary
 
-총 9단계 작업을 완료했습니다:
+총 10단계 작업을 완료했습니다:
 
 **1차 (기본 구축)**
 1. PDF 파이프라인으로 2026 수능 문제 이미지 22개 일괄 등록
@@ -21,6 +21,9 @@
 
 **3차 (UI/UX 개선)**
 9. 전면 UI/UX 개선: 문제뷰어(8개 이슈), 홈/대시보드(3), 어드민(2), OAuth/분석(3)
+
+**4차 (검수 시스템)**
+10. Notion 검수 시스템 (20속성 + 풍부한 블록) + Admin 대시보드 개선 + 6-에이전트 + 문서 업데이트
 
 ---
 
@@ -367,6 +370,115 @@ After:  get_adaptive_problem() → RPC 추천 → fallback 순차
 
 ---
 
+## Step 10: Notion 검수 시스템 + Admin 대시보드 개선
+
+### 10-1: Notion 검수 시스템 구현
+
+**신규/수정 파일:**
+- `src/notion_service.py` (대폭 확장) - `create_review_page()`, 블록 빌더 헬퍼
+- `sync_to_notion.py` (신규) - Supabase → Notion 동기화 CLI
+
+**Notion 데이터베이스 속성 (20개):**
+| 카테고리 | 속성 | 타입 |
+|----------|------|------|
+| 식별 | 문제 ID, 연도, 시험, 문항번호 | 제목, 숫자, 선택, 숫자 |
+| 정보 | 배점, 난이도, 과목, 단원, 정답유형 | 숫자, 숫자, 선택×3 |
+| 콘텐츠 | 정답, 출제의도, 풀이, 힌트1~3, 검수자 | 리치 텍스트×7 |
+| 링크 | 원본링크, 이미지폴더 | URL×2 |
+| 상태 | 상태, 검수일 | 선택, 날짜 |
+
+**검수 페이지 본문 블록:**
+- 문제 정보 Callout (과목/단원/배점/유형/정답)
+- 문제 이미지 (Supabase Storage URL)
+- 풀이 토글 (2000자 자동 분할)
+- 힌트 3단계 토글 (색상별 Callout: 파랑/노랑/빨강)
+- 출제 의도 토글
+- 검수 체크리스트 (8항목 To-do)
+
+**동기화 특징:**
+- Rate limiting: 문제당 1.5초 간격
+- Exponential backoff 재시도 (최대 3회)
+- Circuit breaker: 5회 연속 실패 시 자동 중단
+- ETA 표시 + 실시간 진행률
+- Upsert: 기존 페이지 업데이트 / 없으면 생성
+
+**동기화 결과:**
+| 항목 | 수치 |
+|------|------|
+| 동기화 문제수 | 66문제 |
+| 생성된 Notion 페이지 | 66개 |
+| 소요 시간 | 약 10분 |
+
+### 10-2: Admin 대시보드 개선
+
+**변경 파일:**
+- `src/supabase_service.py` - `get_stats()`에 `by_year_status` 연도별 상태 통계 추가
+- `server/problem_routes.py` - 진행률 바 CSS/JS + 이미지 썸네일 추가
+
+**추가 기능:**
+| 기능 | 설명 |
+|------|------|
+| 연도별 검수 진행률 바 | 각 연도의 needs_review/ready/sent 비율을 색상 바로 표시 |
+| 이미지 썸네일 | 테이블에 40x40 썸네일, 호버 시 3배 확대 |
+| 11열 테이블 | 기존 10열 + 이미지 열 추가 |
+
+### 10-3: 6-에이전트 시스템
+
+**신규 파일:**
+- `agents/dev_agent.py` - DevAgent (서버/의존성/코드 통계)
+- `agents/qa_agent.py` - QAAgent (import/구문/API 테스트)
+
+**에이전트 구조 (6개):**
+```
+Commander (총괄)
+├── PipelineAgent  (PDF 처리)
+├── ContentAgent   (Notion/콘텐츠)
+├── OpsAgent       (통계/모니터링)
+├── DevAgent       (서버/의존성)
+└── QAAgent        (테스트/검증)
+```
+
+### 10-4: 문서 전면 업데이트
+
+모든 가이드/문서를 현재 시스템에 맞게 업데이트:
+- BEGINNER_GUIDE.md, PIPELINE_GUIDE.md, SETUP_GUIDE.md
+- docs/AGENTS.md, docs/SETUP.md, docs/PIPELINE.md, docs/통합설계.md
+- notion_template.md (8속성 → 20속성)
+
+---
+
+## 전체 시스템 현황
+
+### DB 통계 (최종)
+| 테이블 | 레코드 수 | 비고 |
+|--------|----------|------|
+| problems | 66 | 100% 이미지 보유, 100% 분류 완료 |
+| hints | 198 | 81개 맞춤 힌트 포함 |
+| users | 1 | |
+| daily_schedules | 1+ | |
+| deliveries | 2+ | |
+
+### 수정된 파일 목록 (전체)
+
+| 파일 | 변경 유형 |
+|------|----------|
+| `src/pipeline.py` | 버그 수정 (DB 컬럼명) |
+| `src/supabase_storage.py` | 버그 수정 (버킷명, DB 컬럼명) |
+| `src/supabase_service.py` | 확장 - by_year_status 통계 |
+| `src/notion_service.py` | **대폭 확장** - 검수 페이지 생성, 블록 빌더 |
+| `sync_to_notion.py` | **신규** - Supabase → Notion CLI |
+| `server/scheduler.py` | **대폭 확장** - 토큰 갱신, 적응형 선택 |
+| `server/dashboard_routes.py` | **신규** - 분석 대시보드 |
+| `server/main.py` | 수정 - router 등록, 한국어화 |
+| `run.py` | 수정 - CLI 옵션 추가 |
+| `server/problem_routes.py` | 수정 - 반응형, 한국어화, 진행률 바, 썸네일 |
+| `server/static/problem_viewer.jsx` | **전면 개선** - 힌트 누적, Toast, 학습 피드백 |
+| `server/auth.py` | 수정 - 리다이렉트, 색상 통일 |
+| `agents/dev_agent.py` | **신규** - DevAgent |
+| `agents/qa_agent.py` | **신규** - QAAgent |
+
+---
+
 ## 후속 작업 (Action Items)
 
 ### 완료된 항목
@@ -378,9 +490,13 @@ After:  get_adaptive_problem() → RPC 추천 → fallback 순차
 - [x] 힌트 품질 개선 → 27문제 81개 맞춤 힌트
 - [x] 문제 메타데이터 분류 → 30문제 unit/subject 완료
 - [x] UI/UX 전면 개선 → 4개 Critical + 6개 High + 3개 Medium + 1개 Low 수정
+- [x] Notion 검수 시스템 → 20속성 + 풍부한 본문 블록, 66문제 동기화
+- [x] Admin 대시보드 개선 → 연도별 진행률 바 + 이미지 썸네일
+- [x] 6-에이전트 시스템 → DevAgent + QAAgent 추가
+- [x] 문서 전면 업데이트 → 모든 가이드/문서 현행화
 
 ### 남은 항목
 1. **채널 메시지 발송**: 현재 "나에게 보내기" → 카카오톡 채널(친구) 발송 확장
-2. **Notion 양방향 동기화**: 검증된 정답/난이도 반영
-3. **난이도 자동 계산**: 정답률 기반 difficulty_auto 필드 업데이트
-4. **어드민 크롭 도구**: 웹 기반 이미지 크롭 UI (계획 수립 완료)
+2. **난이도 자동 계산**: 정답률 기반 difficulty_auto 필드 업데이트
+3. **도메인 및 SSL**: 프로덕션 배포 준비
+4. **Supabase RLS**: Row Level Security 설정

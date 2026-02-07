@@ -1,117 +1,93 @@
-# KICE Math 서브에이전트 가이드
+# KICE Math 에이전트 시스템 가이드
 
-## 에이전트 구조
+## 에이전트 구조 (6개)
 
 ```
 Commander (총괄)
-├── Developer (개발)
-├── Designer (디자인/UX)
-├── Business (비즈니스/데이터)
-└── QA_Optimizer (품질/최적화)
+├── PipelineAgent  (PDF 처리 파이프라인)
+├── ContentAgent   (Notion 동기화/콘텐츠 검증)
+├── OpsAgent       (통계/헬스체크/모니터링)
+├── DevAgent       (서버 관리/의존성/코드 통계)
+└── QAAgent        (import 검증/구문 검사/API 테스트)
 ```
 
 ## 에이전트별 역할
 
-### Commander (총괄 에이전트)
+### Commander (`agents/commander.py`)
 - **역할**: 전체 프로젝트 조율 및 의사결정
-- **책임**:
-  - 작업 분배 및 우선순위 결정
-  - 에이전트 간 충돌 해결
-  - 최종 품질 검증
-  - 사용자 커뮤니케이션
+- **기능**: 작업 분배, 우선순위, 에이전트 간 충돌 해결, 상태 보고
+- **키워드 디스패치**: 메시지 내 키워드로 적절한 에이전트 자동 선택
 
-### Developer (개발 에이전트)
-- **역할**: 코드 구현 및 기술적 문제 해결
-- **담당 파일**:
-  - `server/*.py` - FastAPI 서버
-  - `src/*.py` - 핵심 서비스
-  - `run.py` - 메인 실행 파일
-- **핵심 작업**:
-  - PDF → 이미지 변환 (250 DPI)
-  - Supabase 연동
-  - KakaoTalk API 통합
+### PipelineAgent (`agents/pipeline_agent.py`)
+- **역할**: PDF 처리 파이프라인
+- **키워드**: pdf, pipeline, 파이프라인, drive, 변환, 업로드, 정답
+- **담당 파일**: `src/pipeline.py`, `src/pdf_converter.py`, `src/page_splitter.py`
 
-### Designer (디자인 에이전트)
-- **역할**: 사용자 경험 및 이미지 품질 최적화
-- **담당 파일**:
-  - `src/image_processor.py` - 이미지 처리
-  - HTML 템플릿 (대시보드 UI)
-- **핵심 작업**:
-  - 이미지 해상도 최적화 (1600px)
-  - 헤더/푸터 자동 크롭
-  - KakaoTalk 표시 최적화
+### ContentAgent (`agents/content_agent.py`)
+- **역할**: Notion 동기화, 데이터 검증, 콘텐츠 QA
+- **키워드**: notion, 동기화, sync, 검수, 검증, validate, 콘텐츠
+- **담당 파일**: `src/notion_service.py`, `sync_to_notion.py`
 
-### Business (비즈니스 에이전트)
-- **역할**: 데이터 관리 및 비즈니스 로직
-- **담당 파일**:
-  - `src/notion_service.py` - Notion 연동
-  - `src/supabase_service.py` - DB 서비스
-  - `config/` - 설정 파일
-- **핵심 작업**:
-  - 문항 데이터 관리
-  - 문항-페이지 매핑
-  - 통계 및 리포트
+### OpsAgent (`agents/ops_agent.py`)
+- **역할**: 통계, 헬스체크, 모니터링, 무결성 검사
+- **키워드**: 통계, stats, health, 헬스, 보고, report, 무결성
+- **담당 파일**: `src/supabase_service.py` (통계 관련)
 
-### QA_Optimizer (품질/최적화 에이전트)
-- **역할**: 코드 품질 검증 및 버그 탐지
-- **책임**:
-  - localhost URL 검출 및 수정
-  - API 에러 핸들링 검증
-  - 성능 최적화 제안
-- **체크리스트**:
-  - [ ] localhost URL 없음
-  - [ ] 이미지 URL 접근 가능
-  - [ ] 버튼/링크 정상 동작
+### DevAgent (`agents/dev_agent.py`)
+- **역할**: 서버 관리, 의존성 체크, 코드 통계
+- **키워드**: 서버, server, 의존성, dep, 구조, structure, 개발
+- **액션**: check-server, start-server, stop-server, deps, structure, code-stats
 
-## 협업 규칙
+### QAAgent (`agents/qa_agent.py`)
+- **역할**: import 검증, 구문 검사, API 테스트, 종합 품질 검사
+- **키워드**: 테스트, test, import, syntax, 구문, 품질, qa, endpoint
+- **액션**: imports, syntax, config, endpoints, full-check
 
-### 1. 작업 요청 형식
+## CLI 사용법
+
+```bash
+# 전체 현황
+python -m agents.run_agents status
+
+# 파이프라인
+python -m agents.run_agents pipeline --year 2026
+
+# 콘텐츠
+python -m agents.run_agents content validate
+python -m agents.run_agents content sync
+
+# 운영
+python -m agents.run_agents ops stats
+python -m agents.run_agents ops health
+python -m agents.run_agents ops report --year 2026
+python -m agents.run_agents ops integrity
+
+# 개발
+python -m agents.run_agents dev check-server
+python -m agents.run_agents dev deps
+python -m agents.run_agents dev code-stats
+
+# QA
+python -m agents.run_agents qa imports
+python -m agents.run_agents qa syntax
+python -m agents.run_agents qa full-check
 ```
-[에이전트명]야 [작업내용] 해줘
-예: Developer야 PDF 변환 코드 수정해줘
-```
-
-### 2. 보고 형식
-```
-## [에이전트명] 보고
-
-### 완료 항목
-- [x] 항목1
-- [x] 항목2
-
-### 미완료 항목
-- [ ] 항목3 (원인: ~)
-
-### 다음 단계
-- 권장 작업...
-```
-
-### 3. 파일 수정 시
-- 수정 전 해당 에이전트에게 확인
-- 여러 에이전트 담당 파일은 Commander 조율
-- 수정 후 QA_Optimizer 검증 필수
-
-## 현재 시스템 상태
-
-### 해결된 이슈
-- [x] localhost URL 버튼 에러
-- [x] 이미지 해상도 개선 (800px → 2924px → 1600px)
-- [x] DB-파일명 불일치
-
-### 미해결 이슈
-- [ ] 한 페이지 다중 문항 분리
-  - 현재: 페이지 = 문항 (1:1)
-  - 목표: 문항별 영역 분리
-  - 담당: Developer + Designer 협업
 
 ## 파일 구조
+
 ```
-Math_KICE/
-├── server/           # FastAPI 서버 (Developer)
-├── src/              # 핵심 서비스 (Developer + Designer)
-├── config/           # 설정 파일 (Business)
-├── downloads/        # PDF 원본
-├── output/           # 처리된 이미지
-│   └── 2026_CSAT_FINAL/  # 최종 이미지 (1600px)
-└── docs/             # 문서
+agents/
+├── __init__.py          # 패키지 초기화 (6개 에이전트 export)
+├── base.py              # BaseAgent, Task, TaskStatus, TaskPriority
+├── commander.py         # CommanderAgent (총괄 + 디스패치)
+├── pipeline_agent.py    # PipelineAgent (PDF 처리)
+├── content_agent.py     # ContentAgent (Notion/콘텐츠)
+├── ops_agent.py         # OpsAgent (통계/모니터링)
+├── dev_agent.py         # DevAgent (서버/의존성)
+├── qa_agent.py          # QAAgent (테스트/검증)
+└── run_agents.py        # CLI 인터페이스
 ```
+
+---
+
+**마지막 업데이트**: 2026-02-08

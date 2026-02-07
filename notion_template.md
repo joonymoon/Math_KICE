@@ -5,283 +5,223 @@
 
 ---
 
-## Properties (속성) 설정
+## 속성 (20개)
 
 ### 1. 기본 식별 정보
 
-| 속성명 | 타입 | 설명 | Make 매핑 |
-|--------|------|------|-----------|
-| **Problem ID** | Title | 문제 고유 ID | `{{item.problem_id}}` |
-| **Year** | Number | 연도 (2022~2025) | `{{item.year}}` |
-| **Exam** | Select | 시험 유형 | `{{item.exam}}` |
-| **Q No** | Number | 문항 번호 (1~30) | `{{item.question_no}}` |
+| 속성명 | 타입 | 설명 | DB 매핑 |
+|--------|------|------|---------|
+| **문제 ID** | 제목 (Title) | 문제 고유 ID | `problem_id` |
+| **연도** | 숫자 (Number) | 연도 (2024~2026) | `year` |
+| **시험** | 선택 (Select) | 시험 유형 | `exam` |
+| **문항번호** | 숫자 (Number) | 문항 번호 (1~30) | `question_no` |
 
-**Exam Select 옵션:**
+**시험 Select 옵션:**
 - CSAT (수능)
 - KICE6 (6월 모의평가)
 - KICE9 (9월 모의평가)
 
 ---
 
-### 2. 자동 추출 정보 (Make에서 입력)
+### 2. 문제 정보
 
-| 속성명 | 타입 | 설명 | Make 매핑 |
-|--------|------|------|-----------|
-| **Score(auto)** | Number | 자동 추출 배점 | `{{item.score}}` |
-| **Answer(auto)** | Text | 자동 추출 정답 | `{{item.answer}}` |
-| **Extract Text** | Text | 추출된 문제 텍스트 | `{{substring(item.extract_text; 0; 500)}}` |
+| 속성명 | 타입 | 설명 | DB 매핑 |
+|--------|------|------|---------|
+| **배점** | 숫자 (Number) | 2, 3, 4점 | `score` |
+| **난이도** | 숫자 (Number) | 1~5 | `difficulty` |
+| **과목** | 선택 (Select) | 수학1/수학2 | `subject` |
+| **단원** | 선택 (Select) | 세부 단원 | `unit` |
+| **정답유형** | 선택 (Select) | 객관식/주관식 | `answer_type` |
 
----
+**과목 옵션:** Math1, Math2
 
-### 3. 검수자가 확정하는 정보
+**단원 옵션:**
+- 수학1: 지수로그, 삼각함수, 수열
+- 수학2: 함수의극한연속, 미분, 적분
+- 선택: 확률과통계, 미적분, 기하
 
-| 속성명 | 타입 | 설명 | Select 옵션 |
-|--------|------|------|-------------|
-| **Subject(verify)** | Select | 과목 (수1/수2) | Math1, Math2 |
-| **Unit(verify)** | Select | 단원 | 아래 참조 |
-| **Score(verify)** | Select | 확정 배점 | 2, 3, 4 |
-| **Answer(verify)** | Text | 확정 정답 | - |
-
-**Unit(verify) Select 옵션:**
-
-수학1:
-- 지수와 로그
-- 지수함수와 로그함수
-- 삼각함수
-- 삼각함수 덧셈정리
-- 수열
-- 급수와 합
-- 수학적 귀납법
-
-수학2:
-- 함수의 극한
-- 함수의 연속
-- 미분계수와 도함수
-- 도함수의 활용
-- 부정적분과 정적분
-- 정적분의 활용
-
-기타:
-- 복합 (여러 단원)
-- 기타
+**정답유형 옵션:** multiple_choice (객관식), short_answer (주관식)
 
 ---
 
-### 4. 출제 의도 & 힌트 (검수자 입력)
+### 3. 콘텐츠 (리치 텍스트)
+
+| 속성명 | 타입 | 설명 | DB 매핑 |
+|--------|------|------|---------|
+| **정답** | 리치 텍스트 | 확정 정답 | `answer_verified` |
+| **출제의도** | 리치 텍스트 | 출제 의도 | `intent_1` |
+| **풀이** | 리치 텍스트 | 상세 풀이 | `solution` |
+| **힌트1** | 리치 텍스트 | 개념 방향 | hints stage=1 |
+| **힌트2** | 리치 텍스트 | 핵심 전환 | hints stage=2 |
+| **힌트3** | 리치 텍스트 | 결정적 한 줄 | hints stage=3 |
+| **검수자** | 리치 텍스트 | 검수 담당자 이름 | - |
+
+---
+
+### 4. 링크
+
+| 속성명 | 타입 | 설명 | DB 매핑 |
+|--------|------|------|---------|
+| **원본링크** | URL | 원본 PDF 링크 | `source_ref` |
+| **이미지폴더** | URL | Supabase 이미지 URL | `problem_image_url` |
+
+---
+
+### 5. 상태 관리
 
 | 속성명 | 타입 | 설명 |
 |--------|------|------|
-| **Intent 1** | Text | 출제 의도 첫 번째 줄 |
-| **Intent 2** | Text | 출제 의도 두 번째 줄 |
-| **Hint 1** | Text | 힌트 ① 개념 방향 |
-| **Hint 2** | Text | 힌트 ② 핵심 전환 |
-| **Hint 3** | Text | 힌트 ③ 결정적 한 줄 |
+| **상태** | 선택 (Select) | 검수 진행 상태 |
+| **검수일** | 날짜 (Date) | 검수 완료일 |
+
+**상태 옵션 (색상):**
+- 검수 필요 (보라)
+- 수정 필요 (빨강)
+- 보류 (회색)
+- 검수 완료 (초록)
+- 발송 준비 (파랑)
 
 ---
 
-### 5. 소스 & 링크
+## 검수 페이지 본문 구성
 
-| 속성명 | 타입 | 설명 | Make 매핑 |
-|--------|------|------|-----------|
-| **Source PDF** | URL | 원본 PDF Drive 링크 | `{{item.source_ref}}` |
-| **Page Images Folder** | URL | 페이지 이미지 폴더 | `{{item.page_images_folder}}` |
-| **Img Page Refs** | Text | 해당 문항 페이지 | 검수자 입력 (예: p03-p04) |
-| **Problem Image** | Files & media | 문제 이미지 | 검수자 업로드 |
+`sync_to_notion.py` 실행 시 각 문제 페이지에 자동 생성되는 블록:
 
----
+```
+📋 문제 정보 (Callout)
+    과목: Math2 | 단원: 미분 | 배점: 3점 | 유형: 객관식 | 정답: 3
 
-### 6. 상태 & 동기화
+🖼️ 문제 이미지 (Image block)
+    Supabase Storage URL에서 로드
 
-| 속성명 | 타입 | 설명 | Select 옵션 |
-|--------|------|------|-------------|
-| **Status** | Select | 검수 상태 | Needs Review, In Progress, Ready, Hold |
-| **Supabase UUID** | Text | Supabase problems.id | `{{supabase_result.id}}` |
-| **Confidence** | Number | AI 분류 신뢰도 | 0.00 ~ 1.00 |
-| **Last Synced** | Date | 마지막 동기화 | 자동 |
+📝 풀이 (Toggle Heading)
+    ▶ 클릭하면 상세 풀이 표시
+    (2000자 초과 시 자동 분할)
 
----
+💡 힌트 1단계: 개념 방향 (Toggle Heading)
+    ▶ 파란색 Callout으로 표시
 
-### 7. 메모 & 태그
+🔑 힌트 2단계: 핵심 전환 (Toggle Heading)
+    ▶ 노란색 Callout으로 표시
 
-| 속성명 | 타입 | 설명 |
-|--------|------|------|
-| **Notes** | Text | 검수자 메모 |
-| **Tags** | Multi-select | 특이사항 태그 |
+🎯 힌트 3단계: 결정적 한 줄 (Toggle Heading)
+    ▶ 빨간색 Callout으로 표시
 
-**Tags 옵션:**
-- 그림 필수
-- 수식 복잡
-- OCR 오류
-- 정답 확인 필요
-- 우선 처리
+📌 출제 의도 (Toggle Heading)
+    ▶ 클릭하면 출제 의도 표시
+
+✅ 검수 체크리스트 (Callout)
+    □ 문제 이미지 선명도 확인
+    □ 정답 정확성 확인
+    □ 배점 확인
+    □ 정답유형 확인 (객관식/주관식)
+    □ 풀이 정확성 및 완성도
+    □ 힌트 3단계 품질 확인
+    □ 과목/단원 분류 확인
+    □ 난이도 적절성 확인
+```
 
 ---
 
 ## Views (뷰) 구성
 
-### 1. Board: Needs Review (칸반)
+### 1. Board: 검수 현황 (칸반)
 
-**Group by:** Status
-**Filter:** Status = "Needs Review"
-**Sort:** Year DESC, Exam ASC, Q No ASC
+**Group by:** 상태
+**Sort:** 연도 DESC, 문항번호 ASC
 
 ```
-┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐
-│  Needs Review   │   In Progress   │      Ready      │      Hold       │
-├─────────────────┼─────────────────┼─────────────────┼─────────────────┤
-│ 2025_CSAT_Q15   │ 2024_KICE9_Q12  │ 2024_CSAT_Q03   │ 2023_KICE6_Q21  │
-│ 2025_CSAT_Q14   │                 │ 2024_CSAT_Q04   │                 │
-│ 2025_CSAT_Q13   │                 │ 2024_CSAT_Q05   │                 │
-│ ...             │                 │ ...             │                 │
-└─────────────────┴─────────────────┴─────────────────┴─────────────────┘
+┌─────────────┬─────────────┬─────────────┬─────────────┬──────────────┐
+│ 검수 필요    │ 수정 필요    │ 보류        │ 검수 완료    │ 발송 준비     │
+├─────────────┼─────────────┼─────────────┼─────────────┼──────────────┤
+│ 2026_Q15    │             │             │ 2026_Q01    │              │
+│ 2026_Q14    │             │             │ 2026_Q02    │              │
+│ ...         │             │             │ ...         │              │
+└─────────────┴─────────────┴─────────────┴─────────────┴──────────────┘
 ```
 
----
+### 2. Table: 연도별 (By Year)
 
-### 2. Table: Low Confidence
+**Group by:** 연도
+**Sort:** 시험 ASC, 문항번호 ASC
+**Columns:** 문제 ID, 시험, 문항번호, 과목, 단원, 배점, 상태
 
-**Filter:** Confidence < 0.85
-**Sort:** Confidence ASC
-**Columns:** Problem ID, Year, Exam, Q No, Score(auto), Confidence, Status
+### 3. Table: 단원별 (By Unit)
 
----
+**Group by:** 단원
+**Sort:** 연도 DESC, 문항번호 ASC
+**Columns:** 문제 ID, 연도, 시험, 배점, 정답, 상태
 
-### 3. Table: Ready Export
+### 4. Gallery: 이미지 갤러리
 
-**Filter:** Status = "Ready"
-**Sort:** Year DESC, Exam ASC, Q No ASC
-**Columns:**
-- Problem ID
-- Year, Exam, Q No
-- Subject(verify), Unit(verify)
-- Score(verify), Answer(verify)
-- Intent 1, Intent 2
-- Hint 1, Hint 2, Hint 3
-- Supabase UUID
+**Card preview:** 문제 이미지
+**Properties shown:** 문제 ID, 연도, 배점, 상태
 
 ---
 
-### 4. Table: By Year
+## 동기화 CLI
 
-**Group by:** Year
-**Sort:** Exam ASC, Q No ASC
-**Columns:** Problem ID, Exam, Q No, Subject, Unit, Score, Status
+```bash
+# 전체 동기화
+python sync_to_notion.py
 
----
+# 연도별
+python sync_to_notion.py --year 2026
 
-### 5. Table: By Unit
+# 시험별
+python sync_to_notion.py --year 2026 --exam CSAT
 
-**Group by:** Unit(verify)
-**Filter:** Status = "Ready"
-**Columns:** Problem ID, Year, Exam, Q No, Score, Answer
+# 단일 문제
+python sync_to_notion.py --problem-id 2026_CSAT_Q01
 
----
+# 상태별
+python sync_to_notion.py --status needs_review
 
-### 6. Gallery: With Images
+# 미리보기 (Notion 호출 없음)
+python sync_to_notion.py --dry-run
 
-**Filter:** Problem Image is not empty
-**Card preview:** Problem Image
-**Properties shown:** Problem ID, Year, Exam, Q No, Score, Status
+# 확인 없이 실행
+python sync_to_notion.py --yes
+```
+
+### 동기화 특징
+- Rate limiting: 문제당 1.5초 간격 (Notion API ~3 req/sec)
+- Exponential backoff 자동 재시도 (최대 3회)
+- Circuit breaker: 5회 연속 실패 시 자동 중단
+- ETA 표시: 남은 시간 실시간 계산
+- Upsert: 기존 페이지 있으면 업데이트, 없으면 생성
 
 ---
 
 ## 검수 워크플로우
 
-### Step 1: 자동 입력 확인
-1. Score(auto)와 Answer(auto) 확인
-2. Extract Text로 문제 내용 파악
-3. 오류 있으면 Notes에 기록
+### Step 1: Notion DB에서 "검수 필요" 문제 선택
+### Step 2: 문제 정보 검토
+1. 문제 이미지 선명도 확인
+2. 정답/배점/정답유형 확인
+3. 과목/단원 분류 확인
 
-### Step 2: 분류 확정
-1. Subject(verify) 선택 (Math1/Math2)
-2. Unit(verify) 선택
-3. Score(verify) 확정
-4. Answer(verify) 확정
+### Step 3: 풀이/힌트 검토
+1. 풀이 토글 열어 정확성 확인
+2. 힌트 3단계 품질 확인
+3. 출제 의도 확인
 
-### Step 3: 이미지 확인
-1. Page Images Folder 링크로 이동
-2. 해당 문항 페이지 찾기
-3. Img Page Refs에 페이지 번호 입력 (예: p03-p04)
-4. (선택) Problem Image에 크롭된 이미지 업로드
-
-### Step 4: 출제의도 & 힌트 작성
-1. Intent 1, Intent 2 작성
-2. Hint 1 (개념 방향) 작성
-3. Hint 2 (핵심 전환) 작성
-4. Hint 3 (결정적 한 줄) 작성
-
-### Step 5: 완료
-1. Status를 "Ready"로 변경
-2. Supabase 동기화 (별도 시나리오 또는 수동)
+### Step 4: 완료
+1. 체크리스트 8항목 완료
+2. 상태 → "검수 완료"
+3. 검수자 이름 + 검수일 기입
 
 ---
 
-## Notion → Supabase 동기화 시나리오
+## 현재 DB 현황 (66문제)
 
-### Make.com 시나리오 C: 검수 완료 동기화
-
-**트리거:** Notion - Watch Database Items
-**필터:** Status changed to "Ready"
-
-**Supabase Update:**
-```
-UPDATE problems SET
-  subject = {{Subject(verify)}},
-  unit = {{Unit(verify)}},
-  score_verified = {{Score(verify)}},
-  answer_verified = {{Answer(verify)}},
-  intent_1 = {{Intent 1}},
-  intent_2 = {{Intent 2}},
-  status = 'ready',
-  updated_at = NOW()
-WHERE id = {{Supabase UUID}};
-```
-
-**Hints Insert:**
-```
-INSERT INTO hints (problem_id, stage, hint_type, hint_text)
-VALUES
-  ({{Problem ID}}, 1, 'concept_direction', {{Hint 1}}),
-  ({{Problem ID}}, 2, 'key_transformation', {{Hint 2}}),
-  ({{Problem ID}}, 3, 'decisive_line', {{Hint 3}})
-ON CONFLICT (problem_id, stage) DO UPDATE SET hint_text = EXCLUDED.hint_text;
-```
+| 연도 | 시험 | 문제수 | 이미지 | 힌트 |
+|------|------|--------|--------|------|
+| 2024 | CSAT | 22 | 22 (100%) | 66 |
+| 2025 | CSAT | 22 | 22 (100%) | 66 |
+| 2026 | CSAT | 22 | 22 (100%) | 66 |
+| **합계** | | **66** | **66 (100%)** | **198** |
 
 ---
 
-## Notion Database 생성 순서
-
-1. **새 페이지 생성** → Database - Full page
-2. **이름:** KICE Problem Review
-3. **Properties 추가** (위 목록 순서대로)
-4. **Views 생성** (Board 먼저, 나머지 Table/Gallery)
-5. **Make.com Integration 연결**
-   - Notion Settings → Connections → Make 추가
-   - Database에 Integration 권한 부여
-
----
-
-## 빠른 검수 팁
-
-| 상황 | 권장 행동 |
-|------|----------|
-| OCR이 깨진 경우 | Tags에 "OCR 오류" 추가, Extract Text 직접 수정 |
-| 정답 불확실 | Tags에 "정답 확인 필요", Status를 "Hold" |
-| 그림이 핵심인 문제 | Tags에 "그림 필수", 이미지 반드시 업로드 |
-| 복합 단원 | Unit을 "복합"으로, Notes에 상세 기록 |
-
----
-
-## 예상 검수 시간
-
-| 항목 | 소요 시간 |
-|------|----------|
-| 자동 입력 확인 | 5초 |
-| 분류 확정 | 10초 |
-| 이미지 확인 | 20초 |
-| 출제의도 작성 | 30초 |
-| 힌트 3개 작성 | 60초 |
-| **총 소요** | **~2분/문항** |
-
-**30문항 × 16파일(4년×4회차) = 480문항**
-**예상 총 소요: ~16시간** (휴식 포함 2~3일)
+**마지막 업데이트**: 2026-02-08

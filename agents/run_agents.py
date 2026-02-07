@@ -119,6 +119,12 @@ def cmd_content(team: AgentTeam, args):
             year=args.year,
             exam=args.exam,
         )
+    elif action == "fill-content":
+        result = team.content.fill_missing_content(
+            year=args.year,
+            exam=args.exam,
+            dry_run=args.dry_run,
+        )
     elif action == "review-status":
         result = team.content.get_review_status()
     else:
@@ -232,7 +238,7 @@ def main():
     p_content = subparsers.add_parser("content", help="콘텐츠 관리 (Notion 동기화/검증)")
     p_content.add_argument(
         "action",
-        choices=["sync-to-notion", "sync-from-notion", "validate", "review-status"],
+        choices=["sync-to-notion", "sync-from-notion", "validate", "fill-content", "review-status"],
         help="실행할 액션",
     )
     p_content.add_argument("--year", type=int, help="연도 필터")

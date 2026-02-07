@@ -1,5 +1,12 @@
 # Make.com 자동화 시나리오 설계
 
+> **ARCHIVED**: 이 문서는 더 이상 사용되지 않습니다.
+> Make.com 기반 자동화는 Python 파이프라인(`src/pipeline.py`)과
+> Notion 동기화(`sync_to_notion.py`)로 완전히 대체되었습니다.
+> 현재 시스템은 `PIPELINE_GUIDE.md`를 참고하세요.
+
+---
+
 ## 전체 구조
 
 ```

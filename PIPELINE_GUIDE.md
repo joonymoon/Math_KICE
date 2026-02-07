@@ -3,515 +3,273 @@
 ## 전체 시스템 개요
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              전체 파이프라인 흐름                                    │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-
   [1] PDF 수집          [2] 자동 처리           [3] 검수            [4] 발송
   ─────────────        ─────────────          ─────────────       ─────────────
 
-  KICE 공식 사이트      Python 스크립트         Notion              카카오톡
-       │               (run.py)               검수 대시보드         채널 메시지
-       │                    │                     │                    │
+  KICE 공식 사이트      Python pipeline         Notion              카카오톡
+       │               (src/pipeline.py)        20개 속성 검수       채널 메시지
        ▼                    ▼                     ▼                    ▼
   ┌─────────┐         ┌─────────┐           ┌─────────┐          ┌─────────┐
-  │ Google  │────────►│ PDF     │──────────►│ 사람    │─────────►│ 사용자  │
+  │ Google  │────────►│ PDF     │──────────►│ Notion  │─────────►│ 사용자  │
   │ Drive   │         │ 변환    │           │ 검수    │          │ 앱/웹   │
   └─────────┘         └─────────┘           └─────────┘          └─────────┘
-       │                    │                     │                    │
-       │                    ▼                     ▼                    │
-       │              ┌─────────┐           ┌─────────┐                │
-       └─────────────►│Supabase │◄──────────│ Sync    │                │
-                      │ DB      │           │         │◄───────────────┘
-                      └─────────┘           └─────────┘
+                           │                     │
+                           ▼                     ▼
+                      ┌─────────┐           ┌──────────┐
+                      │Supabase │◄──────────│sync_to_  │
+                      │ DB      │           │notion.py │
+                      └─────────┘           └──────────┘
 ```
 
 ---
 
 ## Step 1: 환경 준비
 
-### 1.1 필수 계정 가입
-
-| 순서 | 서비스 | URL | 용도 |
-|------|--------|-----|------|
-| 1 | Supabase | https://supabase.com | DB + Storage |
-| 2 | Google Drive | https://drive.google.com | PDF 저장소 |
-| 3 | Google Cloud | https://console.cloud.google.com | API 인증 |
-| 4 | Notion | https://notion.so | 검수 대시보드 |
-| 5 | 카카오 개발자 | https://developers.kakao.com | 메시지 발송 |
-
-### 1.2 Python 환경 설정
-
 ```bash
-# 1. 프로젝트 폴더로 이동
 cd Math_KICE
-
-# 2. 의존성 설치
 pip install -r requirements.txt
-
-# 3. 환경 변수 설정
 copy .env.example .env    # Windows
-cp .env.example .env      # Mac/Linux
-
-# 4. .env 파일 편집하여 API 키 입력
+# .env 파일 편집
 ```
 
-### 1.3 Supabase 설정
+### 필수 설정
 
-1. 프로젝트 생성 (Region: Seoul)
-2. SQL Editor에서 `schema_v2.sql` 실행
-3. API 키 복사 → `.env` 파일
-
-```bash
-# .env 파일에 입력
-SUPABASE_URL=https://xxxxxxxx.supabase.co
-SUPABASE_KEY=eyJhbGciOiJI...
-```
-
-### 1.4 Google Drive 폴더 구조
-
-```
-/KICE_Math/
-├── 2022/
-│   ├── CSAT/
-│   ├── KICE6/
-│   └── KICE9/
-├── 2023/
-│   └── ...
-├── 2024/
-│   └── ...
-└── 2025/
-    └── ...
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_DRIVE_FOLDER_ID=your-folder-id
+NOTION_TOKEN=secret_your-token
+NOTION_DATABASE_ID=your-db-id
 ```
 
 ---
 
-## Step 2: PDF 수집 (수동)
+## Step 2: PDF 수집
 
-### 2.1 KICE 공식 사이트에서 다운로드
-
-- 수능: https://www.suneung.re.kr/
-- 6월/9월 모의평가: https://www.kice.re.kr/
-
-### 2.2 파일명 규칙 (중요!)
+### 파일명 규칙
 
 ```
-형식: YYYY_EXAM_PAPER.pdf
+YYYY_EXAM_PROBLEM.pdf  (문제)
+YYYY_EXAM_ANSWER.pdf   (정답)
 
-예시:
-- 2024_CSAT_PROBLEM.pdf    (수능 문제)
-- 2024_CSAT_ANSWER.pdf     (수능 정답)
-- 2024_KICE6_PROBLEM.pdf   (6월 모평 문제)
-- 2024_KICE6_ANSWER.pdf    (6월 모평 정답)
-- 2024_KICE9_PROBLEM.pdf   (9월 모평 문제)
-- 2024_KICE9_ANSWER.pdf    (9월 모평 정답)
+예: 2026_CSAT_PROBLEM.pdf, 2026_KICE6_ANSWER.pdf
 ```
 
-### 2.3 업로드
-
-해당 폴더에 PDF 업로드 후 `python run.py` 실행
+### 업로드 방법
+- Admin 페이지(`/problem/admin`)에서 PDF 업로드 버튼 사용
+- 또는 Google Drive에 업로드 후 파이프라인 실행
 
 ---
 
-## Step 3: Python 워크플로우 이해
+## Step 3: 파이프라인 실행
 
-### 3.1 전체 워크플로우 (`src/workflow.py`)
+### 주요 모듈
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                         KICEWorkflow 클래스                         │
-├────────────────────────────────────────────────────────────────────┤
-│                                                                    │
-│  [1] Google Drive        파일 목록 조회, 새 파일 감지               │
-│         │                                                          │
-│         ▼                                                          │
-│  [2] 파일 다운로드       PDF를 로컬에 저장                          │
-│         │                                                          │
-│         ▼                                                          │
-│  [3] PDF 변환           PyMuPDF로 PNG 이미지 생성                   │
-│         │                                                          │
-│         ▼                                                          │
-│  [4] 텍스트 추출        PDF에서 텍스트 추출                         │
-│         │                                                          │
-│         ▼                                                          │
-│  [5] 메타데이터 파싱    파일명에서 연도/시험 정보 추출              │
-│         │                                                          │
-│         ▼                                                          │
-│  [6] Supabase 저장      problems 테이블에 데이터 저장               │
-│         │                                                          │
-│         ▼                                                          │
-│  [7] Notion 카드 생성   검수용 카드 자동 생성                       │
-│                                                                    │
-└────────────────────────────────────────────────────────────────────┘
-```
+| 모듈 | 기능 |
+|------|------|
+| `src/pipeline.py` | 전체 파이프라인 오케스트레이션 |
+| `src/pdf_converter.py` | PDF → PNG 변환 (250 DPI) |
+| `src/page_splitter.py` | 하이브리드 문항 분리 (Template + OCR) |
+| `src/image_processor.py` | 이미지 크롭/리사이즈 (1600px) |
+| `src/answer_parser.py` | 정답 PDF 파싱 |
+| `src/supabase_storage.py` | Supabase Storage 업로드 |
+| `src/supabase_service.py` | DB CRUD (문제, 힌트, 통계) |
+| `src/notion_service.py` | Notion API (검수 페이지, 블록 빌더) |
 
-### 3.2 각 모듈 설명
-
-#### `src/google_drive_service.py`
-```python
-# 주요 기능
-- OAuth 인증 및 토큰 관리
-- 폴더 내 파일 목록 조회
-- PDF 파일 다운로드
-- 이미지 파일 업로드
-```
-
-#### `src/pdf_converter.py`
-```python
-# 주요 기능
-- PDF → PNG 변환 (PyMuPDF 사용)
-- PDF 텍스트 추출
-- 파일명 파싱 (연도, 시험 유형 추출)
-```
-
-#### `src/notion_service.py`
-```python
-# 주요 기능
-- 검수 카드 생성
-- 상태 업데이트
-- 검수 완료 문제 조회
-- Supabase 동기화
-```
-
-#### `src/supabase_service.py`
-```python
-# 주요 기능
-- 문제 데이터 CRUD
-- 힌트 관리
-- 처리 이력 관리
-- 통계 조회
-```
-
-### 3.3 실행 명령어
+### 실행 명령어
 
 ```bash
-# 한 번 실행 (새 파일 처리)
+# 파이프라인 실행
+python src/pipeline.py --pdf "2026_CSAT_PROBLEM.pdf" --year 2026 --exam CSAT
+
+# 하이브리드 분리 옵션
+python src/pipeline.py --pdf "경로/시험지.pdf" --year 2026 --exam CSAT --no-ocr
+python src/pipeline.py --pdf "경로/시험지.pdf" --year 2026 --exam CSAT --no-hybrid
+
+# 서버 실행
 python run.py
-
-# 스케줄러 모드 (30분마다 자동 실행)
-python run.py --scheduler
-
-# 스케줄러 간격 변경 (60분마다)
-python run.py --scheduler --interval 60
-
-# 로컬 PDF 파일 처리 (Google Drive 없이)
-python run.py --local "경로/파일.pdf"
 
 # 통계 확인
 python run.py --stats
-
-# Notion 동기화만 실행
-python run.py --sync
-
-# 설정 확인
-python run.py --check
 ```
+
+### 이미지 품질
+
+| DPI | 해상도 (A4) | 용도 |
+|-----|-------------|------|
+| 72 | 595x842 px | 미리보기 |
+| **250** | **2924x4136 px** | **권장** |
+| 300 | 3508x4960 px | 인쇄 품질 |
 
 ---
 
-## Step 4: Notion 검수 대시보드
+## Step 4: Notion 검수
 
-### 4.1 Database 구조
+### 4.1 Notion 동기화
+
+```bash
+python sync_to_notion.py                              # 전체
+python sync_to_notion.py --year 2026                  # 연도별
+python sync_to_notion.py --problem-id 2026_CSAT_Q01   # 단일 문제
+python sync_to_notion.py --dry-run                    # 미리보기
+python sync_to_notion.py --yes                        # 확인 없이 실행
+python sync_to_notion.py --status needs_review        # 상태별
+```
+
+동기화 특징:
+- Rate limiting: 문제당 1.5초 간격 (Notion API ~3 req/sec)
+- Exponential backoff 자동 재시도 (최대 3회)
+- Circuit breaker: 5회 연속 실패 시 자동 중단
+- ETA 표시: 남은 시간 실시간 계산
+
+### 4.2 Database 속성 (20개)
 
 | 속성 | 타입 | 설명 |
 |------|------|------|
-| 문제 ID | 제목 | 고유 식별자 (예: 2024_CSAT) |
-| 연도 | 숫자 | 시험 연도 |
-| 시험 | 선택 | CSAT, KICE6, KICE9 |
-| 문항번호 | 숫자 | 문제 번호 |
-| 배점 | 숫자 | 3 또는 4 |
-| 상태 | 선택 | 검수 필요, 검수 완료, 발송 준비 |
-| 원본링크 | URL | Google Drive PDF 링크 |
-| 이미지폴더 | URL | 변환된 이미지 폴더 |
+| 문제 ID | 제목 | 2026_CSAT_Q01 |
+| 연도, 문항번호, 배점, 난이도 | 숫자 | 기본 정보 |
+| 시험, 상태, 과목, 단원, 정답유형 | 선택 | 분류 정보 |
+| 정답, 출제의도, 풀이, 힌트1~3, 검수자 | 리치 텍스트 | 콘텐츠 |
+| 원본링크, 이미지폴더 | URL | 링크 |
+| 검수일 | 날짜 | 검수 완료일 |
 
-### 4.2 검수 프로세스
+**상태 옵션**: 검수 필요(보라) / 수정 필요(빨강) / 보류(회색) / 검수 완료(초록) / 발송 준비(파랑)
+
+### 4.3 검수 페이지 본문
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Notion "검수 필요" 보드에서 카드 클릭                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  1. 자동 추출 확인                                               │
-│     - 추출된 텍스트 확인                                         │
-│     - 이미지 폴더 링크 클릭하여 이미지 확인                       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  2. 분류 확정                                                    │
-│     - 과목: Math1 / Math2                                       │
-│     - 단원: 세부 단원 선택                                       │
-│     - 배점: 3점 / 4점                                           │
-│     - 정답: 정답 입력                                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  3. 출제의도 & 힌트 작성                                         │
-│     - 출제의도: 이 문제의 핵심 개념                              │
-│     - 힌트 1: 개념 방향                                         │
-│     - 힌트 2: 핵심 전환                                         │
-│     - 힌트 3: 결정적 한 줄                                      │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  4. 완료                                                         │
-│     - 상태 → "검수 완료"                                        │
-│     - python run.py --sync 실행 → Supabase 자동 동기화          │
-└─────────────────────────────────────────────────────────────────┘
+📋 문제 정보 (Callout: 과목/단원/배점/유형/정답)
+🖼️ 문제 이미지 (이미지 블록)
+📝 풀이 (토글)
+💡 힌트 1단계: 개념 방향 (토글, 파란 배경)
+🔑 힌트 2단계: 핵심 전환 (토글, 노란 배경)
+🎯 힌트 3단계: 결정적 한 줄 (토글, 빨간 배경)
+📌 출제 의도 (토글)
+✅ 검수 체크리스트 (8항목)
+   - 문제 이미지 확인
+   - 정답/배점/정답유형 확인
+   - 풀이 정확성/힌트 3단계 확인
+   - 과목/단원/난이도 확인
 ```
 
-### 4.3 힌트 작성 가이드
+### 4.4 검수 프로세스
 
-| 단계 | 이름 | 역할 | 예시 |
-|------|------|------|------|
-| Hint 1 | 개념 방향 | 어떤 개념/공식 사용? | "로그의 기본 성질을 활용하는 문제입니다." |
-| Hint 2 | 핵심 전환 | 어떻게 변환/해석? | "log a = x로 치환하면 일차방정식이 됩니다." |
-| Hint 3 | 결정적 한 줄 | 정답으로 가는 열쇠 | "x를 구한 후 10^x를 계산하세요." |
+1. Notion DB에서 "검수 필요" 문제 선택
+2. 문제 정보/이미지/풀이/힌트 검토
+3. 체크리스트 완료
+4. 상태 → "검수 완료", 검수자/검수일 기입
 
 ---
 
-## Step 5: 카카오톡 발송 설정
+## Step 5: 카카오톡 발송
 
-### 5.1 카카오 개발자 설정
+### Admin 페이지에서 발송
 
-1. https://developers.kakao.com 로그인
-2. 애플리케이션 생성
-3. 플랫폼 등록 (Web)
-4. 카카오 로그인 활성화
-5. 동의항목: `talk_message` 필수
+1. `http://localhost:8000/problem/admin`
+2. 문제 목록에서 "발송" 버튼
+3. 미리보기 확인 → 발송
 
-### 5.2 카카오톡 채널 개설
-
-1. https://center-pf.kakao.com
-2. 채널 생성
-3. 카카오 개발자 앱과 연결
-
-### 5.3 발송 테스트
-
-```python
-# main.py의 기존 코드 사용
-python main.py
-```
-
----
-
-## Step 6: 자동 실행 설정 (선택)
-
-### 6.1 Windows 작업 스케줄러
-
-1. `작업 스케줄러` 열기
-2. `기본 작업 만들기` 클릭
-3. 트리거: 매일 오전 7시
-4. 동작: `python run.py` 실행
-
-### 6.2 Mac/Linux Cron
+### 자동 스케줄러
 
 ```bash
-# crontab 편집
-crontab -e
-
-# 매일 오전 7시 실행
-0 7 * * * cd /path/to/Math_KICE && python run.py
+python run.py --send-once      # 1회 발송
+python run.py --send-daily     # 스케줄러 (5분 간격)
 ```
 
-### 6.3 스케줄러 모드 사용
+---
+
+## Step 6: 에이전트 시스템 (6개)
+
+```
+Commander (총괄)
+├── PipelineAgent  (PDF 처리)
+├── ContentAgent   (Notion/콘텐츠)
+├── OpsAgent       (통계/모니터링)
+├── DevAgent       (서버/의존성/코드)
+└── QAAgent        (테스트/검증)
+```
 
 ```bash
-# 백그라운드에서 30분마다 실행
-nohup python run.py --scheduler &
-
-# 또는 tmux/screen 사용
-tmux new -s kice
-python run.py --scheduler
-# Ctrl+B, D 로 분리
+python -m agents.run_agents status                    # 전체 현황
+python -m agents.run_agents pipeline --year 2026      # 파이프라인
+python -m agents.run_agents content validate          # 데이터 검증
+python -m agents.run_agents ops stats                 # 통계
+python -m agents.run_agents ops health                # 헬스체크
+python -m agents.run_agents dev check-server          # 서버 상태
+python -m agents.run_agents dev deps                  # 의존성
+python -m agents.run_agents dev code-stats            # 코드 통계
+python -m agents.run_agents qa imports                # import 검증
+python -m agents.run_agents qa syntax                 # 구문 검사
+python -m agents.run_agents qa full-check             # 종합 검사
 ```
 
 ---
 
-## 파일 목록 요약
+## 하이브리드 분리 (Hybrid Split)
+
+한 페이지에 여러 문제가 있는 시험지를 자동 분리:
 
 ```
-Math_KICE/
-├── run.py                      # 메인 실행 스크립트
-├── main.py                     # 기존 서비스 코드
-├── kakao_service.py            # 카카오톡 발송 서비스
-├── requirements.txt            # Python 의존성
-├── .env.example                # 환경변수 템플릿
-│
-├── src/                        # 새 모듈 (Make.com 대체)
-│   ├── __init__.py
-│   ├── config.py               # 설정 관리
-│   ├── google_drive_service.py # Google Drive API
-│   ├── pdf_converter.py        # PDF → PNG 변환
-│   ├── notion_service.py       # Notion API
-│   ├── supabase_service.py     # Supabase API
-│   └── workflow.py             # 워크플로우 관리
-│
-├── downloads/                  # PDF 다운로드 (자동 생성)
-├── output/                     # 이미지 출력 (자동 생성)
-├── credentials/                # 인증 정보 (자동 생성)
-│
-├── schema_v2.sql               # DB 스키마
-├── sample_data.sql             # 샘플 데이터
-├── notion_template.md          # Notion DB 템플릿
-│
-├── BEGINNER_GUIDE.md           # 초보자 가이드
-├── SETUP_GUIDE.md              # 설정 가이드
-└── PIPELINE_GUIDE.md           # 이 문서
+[1. 템플릿 분리] → [2. OCR 검증] → [3. 수동 보정 (5%만)]
 ```
 
----
-
-## 예상 작업량
-
-| 단계 | 작업 | 예상 시간 |
-|------|------|----------|
-| 환경 준비 | Python 설치 + 계정 가입 + 설정 | 1~2시간 |
-| PDF 수집 | 16개 파일 다운로드 | 30분 |
-| 자동 추출 | python run.py 실행 | 30분 |
-| 검수 | 480문항 × 2분 | 16시간 (2~3일) |
-| 카카오 설정 | 채널 + 연동 | 1~2시간 |
-| **총계** | | **약 20시간** |
+수능 수학 템플릿: 11페이지에 Q1~Q22 배치
 
 ---
 
 ## 트러블슈팅
 
-### Google Drive 인증 실패
-```bash
-# 토큰 삭제 후 재인증
-del credentials\google_token.json
-python run.py
+| 문제 | 해결 |
+|------|------|
+| Notion Rate limit | 자동 exponential backoff (최대 3회) |
+| 2000자 제한 | 자동 분할 (1900자 단위, 줄 경계) |
+| Toggle 자식 블록 | 2단계 append (Notion API 제약) |
+| Windows cp949 | `python -u sync_to_notion.py --yes` |
+| 5회 연속 실패 | Circuit breaker 자동 중단 |
+
+---
+
+## 프로젝트 파일 구조
+
 ```
-
-### PDF 변환 오류
-- PDF 파일이 손상되지 않았는지 확인
-- PyMuPDF 설치 확인: `pip install PyMuPDF`
-
-### Notion 연결 오류
-- Integration이 데이터베이스에 연결되었는지 확인
-- 데이터베이스 ID가 정확한지 확인
-
-### Supabase 연결 오류
-- URL 형식 확인: `https://xxxxxxxx.supabase.co`
-- API 키가 올바른지 확인
-
-### KakaoTalk "네트워크 연결 상태" 에러
-- **원인**: 메시지 버튼에 localhost URL 사용
-- **해결**: `server/kakao_message.py`에서 localhost URL 체크
-```python
-# 버튼에 localhost URL이면 버튼 추가하지 않음
-if button_url and "localhost" not in button_url:
-    template["buttons"] = [{"title": ..., "link": ...}]
-```
-
-### 이미지가 흐릿함
-- **원인**: 저해상도 PDF 변환 후 업스케일
-- **해결**: 250 DPI로 변환 후 1600px로 다운스케일
-```python
-# 고해상도 변환 (250 DPI)
-dpi = 250
-zoom = dpi / 72
-pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-# 결과: 2924x4136 px
-
-# 다운스케일 (1600px) - image_processor.py
-new_width = 1600
-# 다운스케일 = 선명, 업스케일 = 흐릿
-```
-
-### DB 이미지 URL 404
-- **원인**: DB의 `image_url`과 실제 파일명 불일치
-- **해결**: 업로드 시 `{problem_id}.png` 형식 사용
-```python
-# DB: 2026_CSAT_Q01
-# 파일: 2026_CSAT_Q01.png (O)
-# 파일: page_001.png (X - 불일치)
-storage.upload_image(local_path, f'{problem_id}.png')
+Math_KICE/
+├── run.py                      # CLI 메인
+├── sync_to_notion.py           # Notion 동기화 CLI
+├── requirements.txt
+├── .env.example
+├── schema_v2.sql               # DB 스키마
+│
+├── src/                        # 핵심 서비스
+│   ├── pipeline.py             # 파이프라인
+│   ├── pdf_converter.py        # PDF → PNG
+│   ├── page_splitter.py        # 문항 분리
+│   ├── image_processor.py      # 이미지 처리
+│   ├── answer_parser.py        # 정답 파싱
+│   ├── notion_service.py       # Notion API
+│   ├── supabase_service.py     # DB CRUD
+│   └── supabase_storage.py     # Storage
+│
+├── server/                     # FastAPI 서버
+│   ├── main.py                 # 진입점
+│   ├── problem_routes.py       # Admin + API
+│   ├── scheduler.py            # 자동 발송
+│   ├── dashboard_routes.py     # 분석
+│   └── static/                 # React
+│
+├── agents/                     # 6-에이전트
+│   ├── commander.py
+│   ├── pipeline_agent.py
+│   ├── content_agent.py
+│   ├── ops_agent.py
+│   ├── dev_agent.py
+│   ├── qa_agent.py
+│   └── run_agents.py
+│
+└── docs/                       # 문서
 ```
 
 ---
 
-## NEW: 하이브리드 분리 기능 (Hybrid Split)
-
-### 개요
-
-한 페이지에 여러 문제가 있는 KICE 수학 시험지를 자동으로 분리하는 기능입니다.
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ 1. 템플릿    │────►│ 2. OCR 검증 │────►│ 3. 수동 보정 │
-│ 자동 분리    │     │ (문제번호   │     │ (오류 건만) │
-│ (무료)      │     │  확인)      │     │             │
-└─────────────┘     └─────────────┘     └─────────────┘
-     100%                95%                5%
-```
-
-### 사용 방법
-
-```bash
-# 기본 실행 (하이브리드 분리 활성화)
-python src/pipeline.py --pdf "경로/시험지.pdf" --year 2024 --exam CSAT
-
-# OCR 검증 없이 (빠른 처리)
-python src/pipeline.py --pdf "경로/시험지.pdf" --year 2024 --exam CSAT --no-ocr
-
-# 기존 방식 사용 (1페이지=1문항 가정)
-python src/pipeline.py --pdf "경로/시험지.pdf" --year 2024 --exam CSAT --no-hybrid
-```
-
-### 템플릿 구조 (수능 수학)
-
-| 페이지 | 문제 번호 | 비고 |
-|--------|----------|------|
-| 1 | Q1~Q2 | 객관식 |
-| 2 | Q3~Q5 | 객관식 |
-| 3 | Q6~Q8 | 객관식 |
-| 4 | Q9~Q10 | 객관식 |
-| 5 | Q11~Q12 | 객관식 |
-| 6 | Q13~Q14 | 객관식 |
-| 7 | Q15 | 객관식 마지막 |
-| 8 | Q16~Q17 | 단답형 시작 |
-| 9 | Q18~Q19 | 단답형 |
-| 10 | Q20~Q21 | 단답형 |
-| 11 | Q22 | 단답형 마지막 |
-
-### OCR 검증
-
-- pytesseract 설치 필요: `pip install pytesseract`
-- Tesseract OCR 설치 필요: https://github.com/tesseract-ocr/tesseract
-- 문제 번호 자동 검출하여 템플릿 결과 검증
-- 불일치 시 `needs_review` 플래그 설정
-
-### 수동 검토
-
-분리 결과는 `{output_dir}/split_summary.json`에 저장됩니다:
-
-```json
-{
-  "exam": "CSAT",
-  "year": 2024,
-  "total_problems": 22,
-  "needs_review_count": 2,
-  "needs_review": ["2024_CSAT_Q15", "2024_CSAT_Q21"],
-  "results": [...]
-}
-```
-
-### 관련 파일
-
-- `src/page_splitter.py` - 하이브리드 분리 모듈
-- `src/pipeline.py` - 통합 파이프라인
-
----
-
-## 다음 단계 (확장)
-
-1. ~~**문제 이미지 자동 크롭** - AI 기반 문항 영역 인식~~ ✅ 완료 (하이브리드 분리)
-2. **단원 자동 분류** - GPT/Claude API 활용
-3. **학습 분석 대시보드** - 사용자 통계 시각화
-4. **오답 노트 자동 생성** - 틀린 문제 기반 복습
+**마지막 업데이트**: 2026-02-08
