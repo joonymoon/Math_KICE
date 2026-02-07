@@ -196,6 +196,21 @@ async def admin_dashboard(request: Request):
         .btn-crop { background: #10B981; color: white; margin-left: 4px; }
         .btn-crop:hover { background: #059669; }
 
+        /* Progress bars */
+        .progress-section { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .progress-section h3 { font-size: 15px; color: #333; margin-bottom: 14px; }
+        .progress-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        .progress-label { min-width: 50px; font-size: 13px; font-weight: 600; color: #555; }
+        .progress-bar-bg { flex: 1; height: 22px; background: #f0f0f0; border-radius: 11px; overflow: hidden; position: relative; }
+        .progress-bar-fill { height: 100%; border-radius: 11px; transition: width 0.6s ease; }
+        .progress-bar-fill.done { background: linear-gradient(90deg, #10B981, #34D399); }
+        .progress-bar-fill.review { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+        .progress-text { min-width: 80px; font-size: 12px; color: #888; text-align: right; }
+
+        /* Thumbnail */
+        .thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; border: 1px solid #eee; cursor: pointer; }
+        .thumb:hover { transform: scale(3); position: relative; z-index: 10; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+
         /* Crop Modal Styles */
         .crop-modal-overlay {
             position: fixed;
@@ -283,6 +298,10 @@ async def admin_dashboard(request: Request):
             <div class="stat-card"><h3 id="stat-review">-</h3><p>검토 필요</p></div>
             <div class="stat-card"><h3 id="stat-sent">-</h3><p>발송 완료</p></div>
         </div>
+        <div class="progress-section" id="progress-section" style="display:none;">
+            <h3>연도별 검수 진행률</h3>
+            <div id="progress-bars"></div>
+        </div>
         <div class="filter-bar">
             <div class="filter-row">
                 <label>검색
@@ -324,7 +343,7 @@ async def admin_dashboard(request: Request):
         <div id="add-problem-modal-root"></div>
         <div class="problem-table">
             <table>
-                <thead><tr><th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th><th>문제 ID</th><th>연도</th><th>시험</th><th>번호</th><th>배점</th><th>정답</th><th>상태</th><th>Notion</th><th>관리</th></tr></thead>
+                <thead><tr><th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th><th>이미지</th><th>문제 ID</th><th>연도</th><th>시험</th><th>번호</th><th>배점</th><th>정답</th><th>상태</th><th>Notion</th><th>관리</th></tr></thead>
                 <tbody id="problem-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
             </table>
         </div>
@@ -338,11 +357,24 @@ async def admin_dashboard(request: Request):
                 document.getElementById('stat-ready').textContent = data.by_status?.ready || 0;
                 document.getElementById('stat-review').textContent = data.by_status?.needs_review || 0;
                 document.getElementById('stat-sent').textContent = data.by_status?.sent || 0;
+                // 연도별 진행률 바
+                const yrs = data.by_year_status;
+                if (yrs && Object.keys(yrs).length > 0) {
+                    const section = document.getElementById('progress-section');
+                    const container = document.getElementById('progress-bars');
+                    section.style.display = 'block';
+                    container.innerHTML = Object.keys(yrs).sort((a,b)=>b-a).map(y => {
+                        const s = yrs[y];
+                        const done = (s.ready||0) + (s.sent||0);
+                        const pct = s.total > 0 ? Math.round(done / s.total * 100) : 0;
+                        return '<div class="progress-row"><span class="progress-label">' + y + '</span><div class="progress-bar-bg"><div class="progress-bar-fill done" style="width:' + pct + '%"></div></div><span class="progress-text">' + done + '/' + s.total + ' (' + pct + '%)</span></div>';
+                    }).join('');
+                }
             } catch(e) { console.error(e); }
         }
         async function loadProblems() {
             const tbody = document.getElementById('problem-tbody');
-            tbody.innerHTML = '<tr><td colspan="10" class="loading">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">Loading...</td></tr>';
             let url = '/problem/list?limit=100';
             const search = document.getElementById('filter-search').value.trim();
             const status = document.getElementById('filter-status').value;
@@ -367,12 +399,13 @@ async def admin_dashboard(request: Request):
 
                 if (problems.length > 0) {
                     const notionUrl = (pid) => pid ? 'https://notion.so/' + pid.replace(/-/g, '') : '';
-                    tbody.innerHTML = problems.map(p => '<tr><td><input type="checkbox" class="problem-checkbox" value="'+p.problem_id+'" onchange="updateSelectedCount()"></td><td>'+p.problem_id+'</td><td>'+(p.year||'-')+'</td><td>'+(p.exam||'-')+'</td><td>'+(p.question_no||'-')+'</td><td>'+(p.score||'-')+'점</td><td>'+(p.answer||'-')+'</td><td><span class="status-badge status-'+p.status+'">'+p.status+'</span></td><td>'+(p.notion_page_id ? '<a href="'+notionUrl(p.notion_page_id)+'" target="_blank" style="color:#2563eb;text-decoration:none;" title="Notion에서 보기">📄</a>' : '-')+'</td><td><button class="btn btn-send" onclick="sendProblem(\\''+p.problem_id+'\\')">발송</button><button class="btn btn-crop" onclick="openCropModal(\\''+p.problem_id+'\\', \\''+( p.problem_image_url||'')+'\\')">크롭</button></td></tr>').join('');
+                    const thumbHtml = (url) => url ? '<img src="'+url+'" class="thumb" onerror="this.style.display=\\'none\\'">' : '<span style="color:#ccc;font-size:11px;">-</span>';
+                    tbody.innerHTML = problems.map(p => '<tr><td><input type="checkbox" class="problem-checkbox" value="'+p.problem_id+'" onchange="updateSelectedCount()"></td><td>'+thumbHtml(p.problem_image_url)+'</td><td>'+p.problem_id+'</td><td>'+(p.year||'-')+'</td><td>'+(p.exam||'-')+'</td><td>'+(p.question_no||'-')+'</td><td>'+(p.score||'-')+'점</td><td>'+(p.answer||'-')+'</td><td><span class="status-badge status-'+p.status+'">'+p.status+'</span></td><td>'+(p.notion_page_id ? '<a href="'+notionUrl(p.notion_page_id)+'" target="_blank" style="color:#2563eb;text-decoration:none;" title="Notion에서 보기">📄</a>' : '-')+'</td><td><button class="btn btn-send" onclick="sendProblem(\\''+p.problem_id+'\\')">발송</button><button class="btn btn-crop" onclick="openCropModal(\\''+p.problem_id+'\\', \\''+( p.problem_image_url||'')+'\\')">크롭</button></td></tr>').join('');
                     updateSelectedCount();
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="10" class="loading">No problems found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="loading">No problems found</td></tr>';
                 }
-            } catch(e) { tbody.innerHTML = '<tr><td colspan="10" class="loading">Error</td></tr>'; }
+            } catch(e) { tbody.innerHTML = '<tr><td colspan="11" class="loading">Error</td></tr>'; }
         }
         async function sendProblem(id) {
             // Show preview modal first

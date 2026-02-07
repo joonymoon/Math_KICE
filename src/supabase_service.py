@@ -315,6 +315,7 @@ class SupabaseService:
             "by_status": {},
             "by_year": {},
             "by_exam": {},
+            "by_year_status": {},
         }
 
         for problem in all_problems.data:
@@ -326,6 +327,12 @@ class SupabaseService:
             year = problem.get("year")
             if year:
                 stats["by_year"][year] = stats["by_year"].get(year, 0) + 1
+
+                # 연도별 상태 breakdown
+                if year not in stats["by_year_status"]:
+                    stats["by_year_status"][year] = {"total": 0}
+                stats["by_year_status"][year]["total"] += 1
+                stats["by_year_status"][year][status] = stats["by_year_status"][year].get(status, 0) + 1
 
             # 시험별
             exam = problem.get("exam")

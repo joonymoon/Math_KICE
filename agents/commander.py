@@ -163,6 +163,8 @@ class CommanderAgent(BaseAgent):
             "pipeline": ["pdf", "pipeline", "파이프라인", "drive", "변환", "업로드", "정답"],
             "content": ["notion", "동기화", "sync", "검수", "검증", "validate", "콘텐츠"],
             "ops": ["통계", "stats", "health", "헬스", "보고", "report", "무결성", "integrity"],
+            "dev": ["서버", "server", "의존성", "dep", "구조", "structure", "개발", "code-stats"],
+            "qa": ["테스트", "test", "import", "syntax", "구문", "품질", "qa", "endpoint"],
         }
 
         text_lower = text.lower()

@@ -18,6 +18,16 @@ KICE Math Agent Team - CLI 인터페이스
     python -m agents.run_agents ops report --year 2026
     python -m agents.run_agents ops integrity
 
+    # 개발
+    python -m agents.run_agents dev check-server
+    python -m agents.run_agents dev deps
+    python -m agents.run_agents dev code-stats
+
+    # QA
+    python -m agents.run_agents qa imports
+    python -m agents.run_agents qa syntax
+    python -m agents.run_agents qa full-check
+
     # 종합
     python -m agents.run_agents status
 """
@@ -33,6 +43,8 @@ from .commander import CommanderAgent
 from .pipeline_agent import PipelineAgent
 from .content_agent import ContentAgent
 from .ops_agent import OpsAgent
+from .dev_agent import DevAgent
+from .qa_agent import QAAgent
 
 
 class AgentTeam:
@@ -43,11 +55,15 @@ class AgentTeam:
         self.pipeline = PipelineAgent()
         self.content = ContentAgent()
         self.ops = OpsAgent()
+        self.dev = DevAgent()
+        self.qa = QAAgent()
 
         # Commander에 에이전트 등록
         self.commander.register_agent(self.pipeline)
         self.commander.register_agent(self.content)
         self.commander.register_agent(self.ops)
+        self.commander.register_agent(self.dev)
+        self.commander.register_agent(self.qa)
 
     def print_result(self, result):
         """결과를 보기 좋게 출력"""
@@ -133,6 +149,50 @@ def cmd_ops(team: AgentTeam, args):
     team.print_result(result)
 
 
+def cmd_dev(team: AgentTeam, args):
+    """개발 명령 처리"""
+    action = args.action
+
+    if action == "check-server":
+        result = team.dev.check_server()
+    elif action == "start-server":
+        result = team.dev.start_server()
+    elif action == "stop-server":
+        result = team.dev.stop_server()
+    elif action == "deps":
+        result = team.dev.check_dependencies()
+    elif action == "structure":
+        result = team.dev.get_project_structure()
+    elif action == "code-stats":
+        result = team.dev.get_code_stats()
+    else:
+        print(f"알 수 없는 액션: {action}")
+        return
+
+    team.print_result(result)
+
+
+def cmd_qa(team: AgentTeam, args):
+    """QA 명령 처리"""
+    action = args.action
+
+    if action == "imports":
+        result = team.qa.check_imports()
+    elif action == "syntax":
+        result = team.qa.check_syntax()
+    elif action == "config":
+        result = team.qa.validate_config()
+    elif action == "endpoints":
+        result = team.qa.test_endpoints()
+    elif action == "full-check":
+        result = team.qa.run_full_check()
+    else:
+        print(f"알 수 없는 액션: {action}")
+        return
+
+    team.print_result(result)
+
+
 def cmd_status(team: AgentTeam, args):
     """전체 상태 보고"""
     print(team.commander.generate_status_report())
@@ -150,6 +210,8 @@ def main():
   python -m agents.run_agents ops health             # 서비스 헬스체크
   python -m agents.run_agents content validate       # 데이터 검증
   python -m agents.run_agents pipeline --year 2026   # 파이프라인 실행
+  python -m agents.run_agents dev code-stats         # 코드 통계
+  python -m agents.run_agents qa full-check          # 종합 품질 검사
   python -m agents.run_agents status                 # 전체 현황
         """,
     )
@@ -189,6 +251,24 @@ def main():
     )
     p_ops.add_argument("--year", type=int, help="연도 필터 (report용)")
     p_ops.set_defaults(func=cmd_ops)
+
+    # ─── dev ───
+    p_dev = subparsers.add_parser("dev", help="개발 관리 (서버/의존성/코드)")
+    p_dev.add_argument(
+        "action",
+        choices=["check-server", "start-server", "stop-server", "deps", "structure", "code-stats"],
+        help="실행할 액션",
+    )
+    p_dev.set_defaults(func=cmd_dev)
+
+    # ─── qa ───
+    p_qa = subparsers.add_parser("qa", help="품질 보증 (테스트/검증)")
+    p_qa.add_argument(
+        "action",
+        choices=["imports", "syntax", "config", "endpoints", "full-check"],
+        help="실행할 액션",
+    )
+    p_qa.set_defaults(func=cmd_qa)
 
     # ─── status ───
     p_status = subparsers.add_parser("status", help="전체 시스템 현황")
