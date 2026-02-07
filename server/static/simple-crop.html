@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>간단 크롭</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+    #preview { max-width: 100%; border: 2px solid #ddd; margin: 20px 0; }
+    input, select, button { padding: 10px; margin: 5px 0; font-size: 14px; }
+    button { background: #3B82F6; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #2563EB; }
+    .success { background: #16A34A; }
+    .result { margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📝 간단 크롭 도구</h1>
+    
+    <div>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <img id="preview" style="display:none;">
+
+    <div id="controls" style="display:none;">
+      <h3>크롭 영역 (픽셀)</h3>
+      <label>시작 X: <input type="number" id="x" value="0" min="0"></label><br>
+      <label>시작 Y: <input type="number" id="y" value="0" min="0"></label><br>
+      <label>너비: <input type="number" id="width" value="500" min="10"></label><br>
+      <label>높이: <input type="number" id="height" value="500" min="10"></label><br>
+      <button onclick="performCrop()">✂️ 크롭 실행</button>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+    <div id="result"></div>
+
+    <div id="metadata" style="display:none; margin-top: 30px;">
+      <h3>문제 정보</h3>
+      <label>문제번호: <input type="number" id="number" value="1"></label><br>
+      <label>연도: <input type="number" id="year" value="2025"></label><br>
+      <label>시험: <select id="exam"><option>수능</option><option>6월 모의평가</option><option>9월 모의평가</option></select></label><br>
+      <label>배점: <select id="difficulty"><option>2점</option><option selected>3점</option><option>4점</option></select></label><br>
+      <label>카테고리: <select id="category"><option>미분</option><option>적분</option><option>확률</option></select></label><br>
+      <button class="success" onclick="saveToDb()">💾 저장</button>
+    </div>
+  </div>
+
+  <script>
+    let img = null;
+    let croppedDataUrl = null;
+
+    document.getElementById('fileInput').onchange = function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        img = new Image();
+        img.onload = function() {
+          const preview = document.getElementById('preview');
+          preview.src = ev.target.result;
+          preview.style.display = 'block';
+          
+          document.getElementById('controls').style.display = 'block';
+          document.getElementById('width').value = Math.min(500, img.width);
+          document.getElementById('height').value = Math.min(500, img.height);
+          document.getElementById('width').max = img.width;
+          document.getElementById('height').max = img.height;
+          document.getElementById('x').max = img.width;
+          document.getElementById('y').max = img.height;
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    function performCrop() {
+      if (!img) return;
+
+      const x = parseInt(document.getElementById('x').value);
+      const y = parseInt(document.getElementById('y').value);
+      const w = parseInt(document.getElementById('width').value);
+      const h = parseInt(document.getElementById('height').value);
+
+      const canvas = document.getElementById('canvas');
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+
+      croppedDataUrl = canvas.toDataURL('image/png');
+
+      document.getElementById('result').innerHTML = `
+        <h3 style="color: green;">✅ 크롭 완료</h3>
+        <img src="${croppedDataUrl}" style="max-width: 100%; border: 2px solid green;">
+      `;
+
+      document.getElementById('metadata').style.display = 'block';
+    }
+
+    async function saveToDb() {
+      if (!croppedDataUrl) {
+        alert('먼저 크롭하세요');
+        return;
+      }
+
+      const meta = {
+        number: parseInt(document.getElementById('number').value),
+        year: parseInt(document.getElementById('year').value),
+        exam: document.getElementById('exam').value,
+        difficulty: document.getElementById('difficulty').value,
+        category: document.getElementById('category').value
+      };
+
+      const examMap = {'수능': 'CSAT', '6월 모의평가': 'KICE6', '9월 모의평가': 'KICE9'};
+      const examCode = examMap[meta.exam];
+      const problemId = `${meta.year}_${examCode}_Q${String(meta.number).padStart(2, '0')}`;
+
+      const resp = await fetch(croppedDataUrl);
+      const blob = await resp.blob();
+
+      const formData = new FormData();
+      formData.append('file', blob, `${problemId}.png`);
+      formData.append('problem_id', problemId);
+      formData.append('year', meta.year);
+      formData.append('exam', meta.exam);
+      formData.append('question_no', meta.number);
+      formData.append('difficulty', meta.difficulty);
+      formData.append('category', meta.category);
+
+      try {
+        const result = await fetch('/api/card/upload', {method: 'POST', body: formData});
+        const data = await result.json();
+        
+        if (data.success) {
+          alert('✅ 저장 완료! ' + problemId);
+          document.getElementById('number').value = meta.number + 1;
+        } else {
+          alert('❌ 실패: ' + data.error);
+        }
+      } catch (err) {
+        alert('❌ 오류: ' + err.message);
+      }
+    }
+  </script>
+</body>
+</html>

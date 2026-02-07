@@ -1,7 +1,10 @@
 -- ============================================
 -- KICE 수학 문제 관리 시스템 Supabase 스키마 v2
--- Make.com 자동화 파이프라인 최적화 버전
+-- Python 자동화 파이프라인 + 카카오톡 발송
+-- 최종 업데이트: 2026-02-04
 -- ============================================
+-- problem_id 형식: {year}_{exam}_Q{question_no:02d}
+-- 예: 2026_CSAT_Q01, 2025_KICE6_Q15
 
 -- 기존 테이블 삭제 (새로 시작할 경우만)
 -- DROP TABLE IF EXISTS hint_requests, deliveries, daily_schedules, hints, problems, users, units CASCADE;
@@ -50,7 +53,13 @@ CREATE TABLE problems (
     -- ============================================
     problem_text TEXT,           -- 정제된 문제 텍스트 (LaTeX)
     problem_text_format VARCHAR(20) DEFAULT 'latex',
-    problem_image_url TEXT,      -- Supabase Storage URL
+    -- ============================================
+    -- 이미지 URL 형식:
+    -- https://{project}.supabase.co/storage/v1/object/public/problem-images/{problem_id}.png
+    -- 파일명 규칙: {problem_id}.png (예: 2026_CSAT_Q01.png)
+    -- 이미지 품질: PDF 250 DPI 변환 → 1600px 폭 다운스케일
+    -- ============================================
+    problem_image_url TEXT,      -- Supabase Storage 공개 URL
     problem_image_key VARCHAR(200),
     choices JSONB,               -- {"1": "보기1", ...}
 
@@ -96,6 +105,7 @@ CREATE TABLE problems (
     status VARCHAR(20) DEFAULT 'needs_review',
     -- needs_review: 자동 추출 완료, 검수 필요
     -- ready: 검수 완료, 발송 가능
+    -- sent: 카카오톡으로 발송 완료
     -- hold: 보류
     -- inactive: 비활성화
 
@@ -117,7 +127,7 @@ CREATE TABLE problems (
     CONSTRAINT valid_subject CHECK (subject IS NULL OR subject IN ('Math1', 'Math2')),
     CONSTRAINT valid_score CHECK (score IS NULL OR score IN (2, 3, 4)),
     CONSTRAINT valid_score_verified CHECK (score_verified IS NULL OR score_verified IN (2, 3, 4)),
-    CONSTRAINT valid_status CHECK (status IN ('needs_review', 'ready', 'hold', 'inactive'))
+    CONSTRAINT valid_status CHECK (status IN ('needs_review', 'ready', 'sent', 'hold', 'inactive'))
 );
 
 -- ============================================

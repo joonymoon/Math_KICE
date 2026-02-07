@@ -400,11 +400,118 @@ python run.py
 - URL 형식 확인: `https://xxxxxxxx.supabase.co`
 - API 키가 올바른지 확인
 
+### KakaoTalk "네트워크 연결 상태" 에러
+- **원인**: 메시지 버튼에 localhost URL 사용
+- **해결**: `server/kakao_message.py`에서 localhost URL 체크
+```python
+# 버튼에 localhost URL이면 버튼 추가하지 않음
+if button_url and "localhost" not in button_url:
+    template["buttons"] = [{"title": ..., "link": ...}]
+```
+
+### 이미지가 흐릿함
+- **원인**: 저해상도 PDF 변환 후 업스케일
+- **해결**: 250 DPI로 변환 후 1600px로 다운스케일
+```python
+# 고해상도 변환 (250 DPI)
+dpi = 250
+zoom = dpi / 72
+pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+# 결과: 2924x4136 px
+
+# 다운스케일 (1600px) - image_processor.py
+new_width = 1600
+# 다운스케일 = 선명, 업스케일 = 흐릿
+```
+
+### DB 이미지 URL 404
+- **원인**: DB의 `image_url`과 실제 파일명 불일치
+- **해결**: 업로드 시 `{problem_id}.png` 형식 사용
+```python
+# DB: 2026_CSAT_Q01
+# 파일: 2026_CSAT_Q01.png (O)
+# 파일: page_001.png (X - 불일치)
+storage.upload_image(local_path, f'{problem_id}.png')
+```
+
+---
+
+## NEW: 하이브리드 분리 기능 (Hybrid Split)
+
+### 개요
+
+한 페이지에 여러 문제가 있는 KICE 수학 시험지를 자동으로 분리하는 기능입니다.
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ 1. 템플릿    │────►│ 2. OCR 검증 │────►│ 3. 수동 보정 │
+│ 자동 분리    │     │ (문제번호   │     │ (오류 건만) │
+│ (무료)      │     │  확인)      │     │             │
+└─────────────┘     └─────────────┘     └─────────────┘
+     100%                95%                5%
+```
+
+### 사용 방법
+
+```bash
+# 기본 실행 (하이브리드 분리 활성화)
+python src/pipeline.py --pdf "경로/시험지.pdf" --year 2024 --exam CSAT
+
+# OCR 검증 없이 (빠른 처리)
+python src/pipeline.py --pdf "경로/시험지.pdf" --year 2024 --exam CSAT --no-ocr
+
+# 기존 방식 사용 (1페이지=1문항 가정)
+python src/pipeline.py --pdf "경로/시험지.pdf" --year 2024 --exam CSAT --no-hybrid
+```
+
+### 템플릿 구조 (수능 수학)
+
+| 페이지 | 문제 번호 | 비고 |
+|--------|----------|------|
+| 1 | Q1~Q2 | 객관식 |
+| 2 | Q3~Q5 | 객관식 |
+| 3 | Q6~Q8 | 객관식 |
+| 4 | Q9~Q10 | 객관식 |
+| 5 | Q11~Q12 | 객관식 |
+| 6 | Q13~Q14 | 객관식 |
+| 7 | Q15 | 객관식 마지막 |
+| 8 | Q16~Q17 | 단답형 시작 |
+| 9 | Q18~Q19 | 단답형 |
+| 10 | Q20~Q21 | 단답형 |
+| 11 | Q22 | 단답형 마지막 |
+
+### OCR 검증
+
+- pytesseract 설치 필요: `pip install pytesseract`
+- Tesseract OCR 설치 필요: https://github.com/tesseract-ocr/tesseract
+- 문제 번호 자동 검출하여 템플릿 결과 검증
+- 불일치 시 `needs_review` 플래그 설정
+
+### 수동 검토
+
+분리 결과는 `{output_dir}/split_summary.json`에 저장됩니다:
+
+```json
+{
+  "exam": "CSAT",
+  "year": 2024,
+  "total_problems": 22,
+  "needs_review_count": 2,
+  "needs_review": ["2024_CSAT_Q15", "2024_CSAT_Q21"],
+  "results": [...]
+}
+```
+
+### 관련 파일
+
+- `src/page_splitter.py` - 하이브리드 분리 모듈
+- `src/pipeline.py` - 통합 파이프라인
+
 ---
 
 ## 다음 단계 (확장)
 
-1. **문제 이미지 자동 크롭** - AI 기반 문항 영역 인식
+1. ~~**문제 이미지 자동 크롭** - AI 기반 문항 영역 인식~~ ✅ 완료 (하이브리드 분리)
 2. **단원 자동 분류** - GPT/Claude API 활용
 3. **학습 분석 대시보드** - 사용자 통계 시각화
 4. **오답 노트 자동 생성** - 틀린 문제 기반 복습

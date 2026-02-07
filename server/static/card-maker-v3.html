@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>수능 문제 카드 메이커</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; background: #f5f5f5; padding: 20px; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h1 { margin-bottom: 20px; color: #333; }
+    h2 { margin-bottom: 15px; font-size: 18px; color: #555; }
+    .message { padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+    .message.success { background: #d4edda; color: #155724; }
+    .message.error { background: #f8d7da; color: #721c24; }
+    .crop-container { position: relative; display: inline-block; max-width: 100%; }
+    .crop-container img { max-width: 100%; display: block; border-radius: 8px; }
+    .crop-overlay { position: absolute; border: 3px solid #3B82F6; background: rgba(59, 130, 246, 0.1); cursor: move; }
+    .crop-handle { position: absolute; width: 12px; height: 12px; background: #3B82F6; border: 2px solid white; border-radius: 50%; }
+    .crop-handle.nw { top: -6px; left: -6px; cursor: nw-resize; }
+    .crop-handle.ne { top: -6px; right: -6px; cursor: ne-resize; }
+    .crop-handle.sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+    .crop-handle.se { bottom: -6px; right: -6px; cursor: se-resize; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-top: 5px; }
+    .field { margin-bottom: 15px; }
+    label { display: block; font-weight: 600; color: #555; margin-bottom: 5px; }
+    button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .btn-primary { background: #3B82F6; color: white; }
+    .btn-primary:hover { background: #2563EB; }
+    .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+    .btn-success { background: #16A34A; color: white; margin-top: 10px; }
+    .btn-success:hover { background: #15803D; }
+    .preview { max-width: 100%; border-radius: 8px; margin-top: 10px; }
+    .info { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 14px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📝 수능 문제 카드 메이커 (간편 버전)</h1>
+    <div id="app"></div>
+  </div>
+
+  <script>
+    // Vanilla JS - No React needed
+    let currentImage = null;
+    let cropData = { x: 50, y: 50, width: 200, height: 200 };
+    let isDragging = false;
+    let dragType = null;
+    let startX, startY;
+
+    const app = document.getElementById('app');
+
+    function render() {
+      app.innerHTML = `
+        <div id="message"></div>
+        <div class="grid">
+          <div class="card">
+            <h2>1. 이미지 업로드 & 크롭</h2>
+            <input type="file" id="fileInput" accept="image/*" style="margin-bottom: 15px;">
+            <div id="imageContainer"></div>
+            <button class="btn-primary" id="cropBtn" disabled>✂️ 선택 영역 크롭</button>
+            <div id="croppedPreview"></div>
+          </div>
+
+          <div class="card">
+            <h2>2. 문제 정보</h2>
+            <div class="field">
+              <label>문제 번호</label>
+              <input type="number" id="number" value="1" min="1" max="30">
+            </div>
+            <div class="field">
+              <label>연도</label>
+              <input type="number" id="year" value="2025" min="2010" max="2030">
+            </div>
+            <div class="field">
+              <label>시험</label>
+              <select id="exam">
+                <option>수능</option>
+                <option>6월 모의평가</option>
+                <option>9월 모의평가</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>배점</label>
+              <select id="difficulty">
+                <option>2점</option>
+                <option selected>3점</option>
+                <option>4점</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>카테고리</label>
+              <select id="category">
+                <option>이차함수</option>
+                <option>삼각함수</option>
+                <option>수열</option>
+                <option selected>미분</option>
+                <option>적분</option>
+                <option>확률</option>
+                <option>통계</option>
+                <option>기하</option>
+              </select>
+            </div>
+            <button class="btn-success" id="saveBtn" disabled>💾 데이터베이스에 저장</button>
+            <div class="info">
+              <strong>저장될 ID:</strong><br>
+              <span id="problemId">2025_CSAT_Q01</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      setupEvents();
+      updateProblemId();
+    }
+
+    function setupEvents() {
+      document.getElementById('fileInput').onchange = handleFileUpload;
+      document.getElementById('cropBtn').onclick = performCrop;
+      document.getElementById('saveBtn').onclick = saveToDatabase;
+
+      ['number', 'year', 'exam'].forEach(id => {
+        document.getElementById(id).onchange = updateProblemId;
+      });
+    }
+
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        currentImage = new Image();
+        currentImage.onload = () => {
+          displayImage();
+        };
+        currentImage.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function displayImage() {
+      const container = document.getElementById('imageContainer');
+      const canvas = document.createElement('canvas');
+      const maxWidth = 700;
+      const scale = Math.min(1, maxWidth / currentImage.width);
+
+      canvas.width = currentImage.width * scale;
+      canvas.height = currentImage.height * scale;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+
+      container.innerHTML = '';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'crop-container';
+      wrapper.style.position = 'relative';
+      wrapper.appendChild(canvas);
+
+      // Add crop overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'crop-overlay';
+      overlay.id = 'cropOverlay';
+      updateOverlay(overlay, scale);
+      wrapper.appendChild(overlay);
+
+      // Add resize handles
+      ['nw', 'ne', 'sw', 'se'].forEach(pos => {
+        const handle = document.createElement('div');
+        handle.className = 'crop-handle ' + pos;
+        handle.dataset.handle = pos;
+        overlay.appendChild(handle);
+      });
+
+      container.appendChild(wrapper);
+
+      // Add drag events
+      overlay.onmousedown = startDrag;
+      document.onmousemove = drag;
+      document.onmouseup = stopDrag;
+
+      document.getElementById('cropBtn').disabled = false;
+    }
+
+    function updateOverlay(overlay, scale) {
+      overlay.style.left = (cropData.x * scale) + 'px';
+      overlay.style.top = (cropData.y * scale) + 'px';
+      overlay.style.width = (cropData.width * scale) + 'px';
+      overlay.style.height = (cropData.height * scale) + 'px';
+    }
+
+    function startDrag(e) {
+      e.preventDefault();
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      if (e.target.dataset.handle) {
+        dragType = 'resize-' + e.target.dataset.handle;
+      } else {
+        dragType = 'move';
+      }
+    }
+
+    function drag(e) {
+      if (!isDragging) return;
+
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const container = document.querySelector('.crop-container');
+      if (!container) return;
+
+      const canvas = container.querySelector('canvas');
+      const scale = canvas.width / currentImage.width;
+
+      if (dragType === 'move') {
+        cropData.x += dx / scale;
+        cropData.y += dy / scale;
+      } else if (dragType.startsWith('resize-')) {
+        const handle = dragType.split('-')[1];
+        if (handle.includes('e')) cropData.width += dx / scale;
+        if (handle.includes('w')) { cropData.x += dx / scale; cropData.width -= dx / scale; }
+        if (handle.includes('s')) cropData.height += dy / scale;
+        if (handle.includes('n')) { cropData.y += dy / scale; cropData.height -= dy / scale; }
+      }
+
+      // Constrain to image bounds
+      cropData.x = Math.max(0, Math.min(cropData.x, currentImage.width - cropData.width));
+      cropData.y = Math.max(0, Math.min(cropData.y, currentImage.height - cropData.height));
+      cropData.width = Math.max(50, Math.min(cropData.width, currentImage.width - cropData.x));
+      cropData.height = Math.max(50, Math.min(cropData.height, currentImage.height - cropData.y));
+
+      const overlay = document.getElementById('cropOverlay');
+      if (overlay) updateOverlay(overlay, scale);
+    }
+
+    function stopDrag() {
+      isDragging = false;
+      dragType = null;
+    }
+
+    function performCrop() {
+      if (!currentImage) return;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = cropData.width;
+      canvas.height = cropData.height;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(
+        currentImage,
+        cropData.x, cropData.y, cropData.width, cropData.height,
+        0, 0, cropData.width, cropData.height
+      );
+
+      const croppedDataUrl = canvas.toDataURL('image/png');
+
+      const preview = document.getElementById('croppedPreview');
+      preview.innerHTML = `
+        <h3 style="margin-top: 20px; color: #16A34A;">✅ 크롭 완료</h3>
+        <img src="${croppedDataUrl}" class="preview">
+      `;
+
+      window.croppedImage = croppedDataUrl;
+      document.getElementById('saveBtn').disabled = false;
+    }
+
+    async function saveToDatabase() {
+      if (!window.croppedImage) {
+        showMessage('❌ 이미지를 먼저 크롭하세요', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ 저장 중...';
+
+      try {
+        const response = await fetch(window.croppedImage);
+        const blob = await response.blob();
+
+        const formData = new FormData();
+        const meta = {
+          number: parseInt(document.getElementById('number').value),
+          year: parseInt(document.getElementById('year').value),
+          exam: document.getElementById('exam').value,
+          difficulty: document.getElementById('difficulty').value,
+          category: document.getElementById('category').value
+        };
+
+        const examMap = { '수능': 'CSAT', '6월 모의평가': 'KICE6', '9월 모의평가': 'KICE9' };
+        const examCode = examMap[meta.exam] || 'CSAT';
+        const problemId = meta.year + '_' + examCode + '_Q' + String(meta.number).padStart(2, '0');
+
+        formData.append('file', blob, problemId + '.png');
+        formData.append('problem_id', problemId);
+        formData.append('year', meta.year);
+        formData.append('exam', meta.exam);
+        formData.append('question_no', meta.number);
+        formData.append('difficulty', meta.difficulty);
+        formData.append('category', meta.category);
+
+        const result = await fetch('/api/card/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await result.json();
+
+        if (data.success) {
+          showMessage('✅ 저장 완료! ' + problemId, 'success');
+          document.getElementById('number').value = meta.number + 1;
+          updateProblemId();
+          window.croppedImage = null;
+          document.getElementById('croppedPreview').innerHTML = '';
+          document.getElementById('cropBtn').disabled = true;
+        } else {
+          showMessage('❌ 저장 실패: ' + (data.error || '알 수 없는 오류'), 'error');
+        }
+      } catch (err) {
+        showMessage('❌ 오류: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 데이터베이스에 저장';
+      }
+    }
+
+    function showMessage(text, type) {
+      const msg = document.getElementById('message');
+      msg.className = 'message ' + type;
+      msg.textContent = text;
+      msg.style.display = 'block';
+      setTimeout(() => msg.style.display = 'none', 5000);
+    }
+
+    function updateProblemId() {
+      const year = document.getElementById('year').value;
+      const exam = document.getElementById('exam').value;
+      const number = document.getElementById('number').value;
+      const examMap = { '수능': 'CSAT', '6월 모의평가': 'KICE6', '9월 모의평가': 'KICE9' };
+      const examCode = examMap[exam] || 'CSAT';
+      const problemId = year + '_' + examCode + '_Q' + String(number).padStart(2, '0');
+      document.getElementById('problemId').textContent = problemId;
+    }
+
+    // Initialize
+    render();
+  </script>
+</body>
+</html>

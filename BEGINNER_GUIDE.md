@@ -20,21 +20,22 @@
 ### 우리가 만들 시스템의 흐름
 
 ```
-[수능 PDF] → [Google Drive] → [Python 스크립트] → [Supabase DB]
-                                      ↓
-                                 [Notion 검수]
-                                      ↓
-                                 [카카오톡 발송]
+[1] PDF 수집          [2] 이미지 변환         [3] 검토
+Google Drive    →    PyMuPDF (250 DPI)   →   Notion
+                           ↓
+[6] 발송             [5] 저장              [4] 업로드
+KakaoTalk       ←    Supabase DB     ←    Supabase Storage
 ```
 
 ### 시스템 구성
 
 | 구성 요소 | 역할 | 비용 |
 |----------|------|------|
-| **Python 스크립트** | 자동화 핵심 엔진 | 무료 |
+| **Python + FastAPI** | 자동화 핵심 엔진 + 웹서버 | 무료 |
 | **Google Drive** | PDF 파일 저장소 | 무료 (15GB) |
 | **Notion** | 문제 검수 및 관리 화면 | 무료 |
-| **Supabase** | 데이터베이스 (문제/정답 저장) | 무료 (500MB) |
+| **Supabase** | 데이터베이스 + 이미지 저장소 | 무료 (500MB) |
+| **KakaoTalk API** | 문제 이미지 발송 | 무료 |
 
 ### Make.com 대신 Python을 사용하는 이유
 
@@ -304,9 +305,45 @@ cp .env.example .env      # Mac/Linux
 
 ---
 
-## 6. 시스템 실행하기
+## 6. KakaoTalk 설정
 
-### 6.1 설정 확인
+### 6.1 카카오 개발자 앱 생성
+
+**Step 1: 카카오 개발자 등록**
+1. https://developers.kakao.com 접속
+2. 로그인 후 `내 애플리케이션` 클릭
+3. `애플리케이션 추가하기` 클릭
+4. 앱 이름: `KICE Math` 입력 → 저장
+
+**Step 2: 플랫폼 등록**
+1. 생성된 앱 클릭
+2. `앱 설정` → `플랫폼`
+3. `Web 플랫폼 등록` 클릭
+4. 사이트 도메인: `http://localhost:8000` 입력
+
+**Step 3: 카카오 로그인 설정**
+1. `제품 설정` → `카카오 로그인`
+2. `활성화 설정` ON
+3. Redirect URI 등록: `http://localhost:8000/auth/kakao/callback`
+
+**Step 4: 동의항목 설정**
+1. `제품 설정` → `카카오 로그인` → `동의항목`
+2. 필수 동의:
+   - `talk_message` (카카오톡 메시지 전송)
+
+**Step 5: API 키 확인**
+1. `앱 설정` → `앱 키`
+2. `.env` 파일에 입력:
+   ```
+   KAKAO_CLIENT_ID=여기에_REST_API_키_입력
+   KAKAO_REDIRECT_URI=http://localhost:8000/auth/kakao/callback
+   ```
+
+---
+
+## 7. 시스템 실행하기
+
+### 7.1 설정 확인
 
 먼저 모든 설정이 올바른지 확인:
 
@@ -333,26 +370,60 @@ python run.py
 5. 브라우저에 "인증 성공" 메시지 표시
 6. 토큰이 자동 저장됨 (다음부터 자동 로그인)
 
-### 6.3 실행 명령어
+### 7.3 실행 명령어
 
 ```bash
-# 한 번 실행 (새 파일 처리)
-python run.py
+# 웹 서버 실행 (KakaoTalk 연동)
+python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 
-# 스케줄러 모드 (30분마다 자동 실행)
-python run.py --scheduler
+# PDF → 이미지 변환 (250 DPI 고해상도)
+python -c "
+import fitz
+from pathlib import Path
 
-# 스케줄러 간격 변경 (60분마다)
-python run.py --scheduler --interval 60
+pdf = fitz.open('./downloads/2026_CSAT_PROBLEM.pdf')
+dpi = 250
+zoom = dpi / 72
 
-# 로컬 PDF 파일 처리 (Google Drive 없이)
-python run.py --local "경로/파일.pdf"
+for i, page in enumerate(pdf):
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    pix.save(f'./output/page_{i+1:03d}.png')
+"
+
+# 이미지 크롭 및 최적화 (1600px)
+python src/image_processor.py ./output/raw ./output/processed
+
+# Supabase Storage 업로드
+python src/supabase_storage.py
 
 # 통계 확인
 python run.py --stats
 
 # Notion 동기화만 실행
 python run.py --sync
+```
+
+### 7.4 이미지 품질 설정
+
+**PDF 변환 시 DPI 설정 (중요!)**
+| DPI | 해상도 (A4) | 용도 |
+|-----|-------------|------|
+| 72 | 595x842 px | 웹 미리보기 (품질 낮음) |
+| 150 | 1240x1754 px | 일반 용도 |
+| **250** | **2924x4136 px** | **권장 (선명)** |
+| 300 | 3508x4960 px | 인쇄 품질 |
+
+**이미지 처리 파이프라인**
+```
+PDF (250 DPI) → 고해상도 이미지 (2924px)
+      ↓
+헤더/푸터 자동 제거
+      ↓
+하단 공백 트림
+      ↓
+1600px로 리사이즈 (다운스케일 = 선명)
+      ↓
+Supabase Storage 업로드
 ```
 
 ### 6.4 실행 결과 확인
@@ -428,29 +499,71 @@ pip install PyMuPDF
 - PDF 파일이 손상되지 않았는지 확인
 - 로컬에서 PDF가 열리는지 확인
 
+### KakaoTalk 발송 오류
+
+**"네트워크 연결 상태가 좋지 않습니다" 오류:**
+- **원인**: 메시지 버튼에 localhost URL 사용
+- **해결**: `server/kakao_message.py`에서 localhost 체크 확인
+  ```python
+  # 버튼 URL이 localhost면 버튼 추가하지 않음
+  if button_url and "localhost" not in button_url:
+      template["buttons"] = [...]
+  ```
+
+**이미지가 흐릿하게 보임:**
+- **원인**: PDF를 낮은 DPI로 변환 후 업스케일
+- **해결**:
+  1. PDF를 250 DPI로 재변환 (2924x4136 px)
+  2. 1600px로 다운스케일 (업스케일 ❌, 다운스케일 ✅)
+
+**DB 이미지 URL 404 에러:**
+- **원인**: DB의 image_url과 실제 파일명 불일치
+- **해결**: 업로드 시 `{problem_id}.png` 형식 사용
+  ```python
+  storage.upload_image(local_path, f'{problem_id}.png')
+  ```
+
 ---
 
 ## 부록: 프로젝트 구조
 
 ```
 Math_KICE/
-├── run.py                      # 실행 스크립트
+├── run.py                      # CLI 실행 스크립트
 ├── requirements.txt            # 의존성 목록
 ├── .env                        # 환경 변수 (본인 설정)
 ├── .env.example               # 환경 변수 템플릿
+│
+├── server/                     # FastAPI 웹 서버
+│   ├── main.py                # 서버 진입점
+│   ├── auth.py                # 카카오 로그인
+│   ├── users.py               # 사용자 관리
+│   ├── kakao_message.py       # 카카오톡 메시지 발송
+│   ├── message_routes.py      # 메시지 API
+│   └── problem_routes.py      # 문제 관리 API
 │
 ├── src/                        # 소스 코드
 │   ├── config.py              # 설정 관리
 │   ├── google_drive_service.py # Google Drive API
 │   ├── pdf_converter.py       # PDF → PNG 변환
+│   ├── image_processor.py     # 이미지 크롭/최적화 (1600px)
 │   ├── notion_service.py      # Notion API
-│   ├── supabase_service.py    # Supabase API
-│   └── workflow.py            # 워크플로우 관리
+│   ├── supabase_service.py    # Supabase DB API
+│   ├── supabase_storage.py    # Supabase Storage API
+│   ├── pipeline.py            # 전체 파이프라인
+│   └── problem_mapper.py      # 문항-페이지 매핑
 │
 ├── downloads/                  # PDF 다운로드 폴더
 ├── output/                     # 이미지 출력 폴더
+│   └── 2026_CSAT_FINAL/       # 최종 처리된 이미지 (1600px)
 ├── credentials/                # 인증 정보 폴더
+├── docs/                       # 문서
+│   ├── AGENTS.md              # 에이전트 가이드
+│   ├── SETUP.md               # 설정 가이드
+│   └── PIPELINE.md            # 파이프라인 문서
 │
+├── sql/                        # SQL 스크립트
+│   └── create_problems_table.sql
 ├── schema_v2.sql              # DB 스키마
 └── sample_data.sql            # 샘플 데이터
 ```

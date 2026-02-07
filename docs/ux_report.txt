@@ -1,0 +1,545 @@
+================================================================================
+  UX REVIEW REPORT: Notion Review System for Korean Math Exam Problems
+  Math KICE Project
+  Date: 2026-02-08
+  Reviewer: Design/UX Agent
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. Notion Page Layout Review
+2. Notion Database Property Review
+3. Workflow UX Review (sync_to_notion.py)
+4. Admin Page Alignment Review
+5. Overall System Cohesion
+6. Priority Recommendations Summary
+
+================================================================================
+1. NOTION PAGE LAYOUT REVIEW
+   (Source: src/notion_service.py, _build_review_blocks method, lines 442-529)
+================================================================================
+
+1.1 INFORMATION HIERARCHY ASSESSMENT
+-------------------------------------
+Current section order:
+  [1] Divider + "문제 정보" (Problem Info callout)
+  [2] Divider + "문제 이미지" (Problem Image)
+  [3] Divider + "출제 의도" (Intent)
+  [4] Divider + Hints (3 toggleable headings)
+  [5] Divider + "풀이" (Solution toggle)
+  [6] Divider + "검수 체크리스트" (Review Checklist)
+
+Evaluation:
+  GOOD - The hierarchy starts with identification metadata (subject, unit,
+  score, answer type, answer), which gives the reviewer immediate context.
+  Placing the problem image second is correct -- reviewers need to see the
+  source material before evaluating the generated content below it.
+
+  ISSUE - The "정답" (answer) is buried inside the info callout alongside
+  metadata. For a review workflow, the answer is one of the most critical
+  verification items. It would be more effective to visually separate the
+  answer from the static metadata, perhaps with bold formatting or its own
+  callout block to draw the reviewer's eye.
+
+  ISSUE - The "출제 의도" (intent) section is placed before hints and
+  solution. While this makes logical sense from a content-authoring
+  perspective, from a reviewer's task flow, the reviewer typically checks
+  (1) image correctness, (2) answer correctness, (3) solution accuracy,
+  and (4) hint quality. The intent is supplementary context. Consider
+  moving "출제 의도" after "풀이" (solution) or collapsing it into a toggle.
+
+  SUGGESTION - Recommended section order for optimal review flow:
+    [1] 문제 정보 (metadata callout)
+    [2] 문제 이미지 (problem image)
+    [3] 풀이 (solution toggle) -- moved up, since solution verification
+        is a higher-priority task than reading intent
+    [4] 힌트 1/2/3 (hint toggles)
+    [5] 출제 의도 (intent) -- moved down or made toggleable
+    [6] 검수 체크리스트 (review checklist)
+
+
+1.2 VISUAL STRUCTURE & SCANNABILITY
+-------------------------------------
+  GOOD - Consistent use of dividers between every section creates clear
+  visual separation. Heading 2 (heading_2) is used uniformly, giving a
+  clean, predictable rhythm.
+
+  GOOD - The callout block for "문제 정보" uses a single consolidated text
+  block with line breaks, which keeps metadata compact. This is better
+  than using separate blocks for each field.
+
+  ISSUE - There are 6 dividers total across 6 sections. In Notion, this
+  many horizontal rules can feel visually heavy, especially on smaller
+  screens. Consider removing the first divider (line 447, before "문제
+  정보") since it is the opening section and needs no top separator. Also
+  consider removing the divider before the checklist, using a callout's
+  built-in visual boundary instead.
+
+  ISSUE - The "(이미지 없음 - 업로드 필요)" and "(힌트 미입력)" placeholder
+  texts are plain paragraphs. They are easy to miss. Consider using a
+  callout with a warning emoji (e.g., "⚠️") and yellow_background color
+  to draw attention to missing data that blocks review completion.
+
+
+1.3 EMOJI/ICON CONSISTENCY
+----------------------------
+Current emoji mapping:
+  - 📋 = Problem info callout
+  - 💡 = Hint Stage 1 (Concept Direction) + default callout
+  - 🔑 = Hint Stage 2 (Key Transformation)
+  - 🎯 = Hint Stage 3 (Decisive Line)
+  - ✅ = Review checklist callout
+
+Evaluation:
+  GOOD - The hint emoji progression (💡 -> 🔑 -> 🎯) is semantically
+  coherent and visually distinct. It tells a story: lightbulb idea ->
+  key insight -> target answer. This is a strong design choice.
+
+  GOOD - Color-coded callout backgrounds for hints (blue -> yellow -> red)
+  create a natural visual escalation that mirrors hint intensity.
+
+  MINOR ISSUE - The "풀이" (solution) toggle heading has no emoji. For
+  consistency, consider adding one (e.g., "📝 풀이" or "🧮 풀이").
+
+  MINOR ISSUE - The "문제 이미지" and "출제 의도" headings also have no
+  emoji. For full visual consistency, either add emojis to all section
+  headings or remove them from all. Mixed usage creates subtle
+  inconsistency, though the current state is acceptable.
+
+
+1.4 TOGGLE PATTERN EVALUATION
+-------------------------------
+  GOOD - Hints are collapsed by default (toggleable heading_2). This is
+  the correct pattern for review. Reviewers should first try to evaluate
+  whether hints are needed and at what level before seeing the actual
+  content. Collapsed toggles prevent accidental spoiling of hint content.
+
+  GOOD - Solution is also collapsed by default. This encourages reviewers
+  to first check the answer independently before reading the solution.
+
+  SUGGESTION - Consider making "출제 의도" also toggleable. It is not
+  critical for the review verification steps and can be checked last.
+
+
+1.5 REVIEW CHECKLIST EVALUATION
+---------------------------------
+Current checklist items:
+  [1] 문제 이미지 확인 (Check problem image)
+  [2] 정답 확인 (Check answer)
+  [3] 풀이 정확성 확인 (Check solution accuracy)
+  [4] 힌트 3단계 확인 (Check 3-stage hints)
+  [5] 과목/단원 분류 확인 (Check subject/unit classification)
+
+Evaluation:
+  GOOD - Five items is a reasonable length. Too many checklist items
+  would discourage completion; too few would miss critical checks.
+
+  MISSING ITEMS - Based on the database schema and the full data model,
+  the following important verifications are absent:
+
+  (a) "배점 확인" (Score verification) -- The schema has both `score`
+      (auto-extracted) and `score_verified` (reviewed). The checklist
+      should prompt reviewers to verify the score.
+
+  (b) "정답 유형 확인 (객관식/주관식)" (Answer type verification) --
+      The auto-extracted answer_type may be wrong. This should be checked.
+
+  (c) "출제의도 확인" (Intent verification) -- Currently not in the
+      checklist even though it is a section on the page.
+
+  (d) "난이도 설정" (Difficulty assignment) -- The schema has a
+      `difficulty` field (1-5) that is set by reviewers. There is no
+      prompt for reviewers to set it, and no property in Notion to
+      capture it.
+
+  RECOMMENDED CHECKLIST (8 items):
+    [ ] 문제 이미지 확인
+    [ ] 정답 확인
+    [ ] 배점 확인
+    [ ] 정답 유형(객관식/주관식) 확인
+    [ ] 풀이 정확성 확인
+    [ ] 힌트 3단계 확인
+    [ ] 과목/단원 분류 확인
+    [ ] 난이도 설정 (1~5)
+
+
+================================================================================
+2. NOTION DATABASE PROPERTY REVIEW
+   (Source: src/notion_service.py, create_review_page method, lines 300-375)
+================================================================================
+
+2.1 CURRENT PROPERTIES (16 total)
+-----------------------------------
+  과목, 단원, 문제 ID, 문항번호, 배점, 상태, 시험, 연도,
+  원본링크, 이미지폴더, 정답, 출제의도, 풀이, 힌트1, 힌트2, 힌트3
+
+Evaluation:
+  ISSUE - 16 properties is at the upper boundary of usability for a Notion
+  table view. Notion tables start to feel cramped at 10+ visible columns.
+  Many of these properties serve different purposes and not all need to be
+  visible simultaneously.
+
+  CATEGORIZATION:
+    Core Identification (always visible):
+      - 문제 ID (title), 연도, 시험, 문항번호
+    Review Status (always visible):
+      - 상태
+    Scoring Info (visible during review):
+      - 배점, 정답
+    Classification (visible during review):
+      - 과목, 단원
+    Content (hide in table, view on page):
+      - 출제의도, 풀이, 힌트1, 힌트2, 힌트3
+    Links (hide in table, view on page):
+      - 원본링크, 이미지폴더
+
+
+2.2 RECOMMENDED DEFAULT TABLE VIEW
+-------------------------------------
+  Visible columns (7):
+    문제 ID | 연도 | 시험 | 문항번호 | 배점 | 상태 | 정답
+
+  Hidden columns (9):
+    과목, 단원, 출제의도, 풀이, 힌트1, 힌트2, 힌트3, 원본링크, 이미지폴더
+
+  REASON: The 7 visible columns provide enough information for a reviewer
+  to (a) identify the problem, (b) see its current status, and (c) know
+  the answer at a glance. Detailed content (hints, solution, intent) is
+  best viewed by opening the page, where the rich content layout is
+  designed for review.
+
+
+2.3 RECOMMENDED ADDITIONAL VIEWS
+-----------------------------------
+  (a) "검수 필요" (Needs Review) - Board View
+      Group by: 상태
+      Sort by: 연도 desc, 문항번호 asc
+      Purpose: Quick visual overview of review pipeline
+
+  (b) "연도별" (By Year) - Table View
+      Group by: 연도
+      Filter: 상태 != 발송 준비
+      Purpose: Year-by-year progress tracking
+
+  (c) "과목별" (By Subject) - Board View
+      Group by: 과목
+      Purpose: Subject distribution analysis after review
+
+
+2.4 MISSING PROPERTIES - RECOMMENDED ADDITIONS
+-------------------------------------------------
+  (a) "난이도" (Difficulty) - Number property
+      PRIORITY: HIGH
+      The database schema has a `difficulty` field (1-5) set by reviewers.
+      But there is no corresponding Notion property. This means reviewers
+      cannot set difficulty during the Notion review workflow. When
+      sync_to_supabase runs, it cannot sync difficulty back.
+      The supabase_service.py update_problem_from_notion method (line 211)
+      already checks for notion_data.get("난이도"), but the property is
+      never created in Notion.
+
+  (b) "정답유형" (Answer Type) - Select property
+      PRIORITY: MEDIUM
+      Options: 객관식, 주관식
+      The database has `answer_type` with values 'multiple' or not. The
+      Notion page body shows this as "유형: 객관식/주관식" in the info
+      callout, but it is not a database property, so it cannot be
+      filtered or edited from the table view.
+
+  (c) "검수자" (Reviewer) - Person property
+      PRIORITY: LOW
+      If multiple people review problems, tracking who reviewed what
+      would be valuable for accountability and workload distribution.
+
+  (d) "검수일" (Review Date) - Date property
+      PRIORITY: LOW
+      Useful for tracking review throughput and identifying stale items.
+
+
+================================================================================
+3. WORKFLOW UX REVIEW
+   (Source: sync_to_notion.py)
+================================================================================
+
+3.1 CLI INTERFACE ASSESSMENT
+------------------------------
+  Usage patterns:
+    python sync_to_notion.py                              # All problems
+    python sync_to_notion.py --year 2026                  # By year
+    python sync_to_notion.py --problem-id 2026_CSAT_Q01   # Single problem
+    python sync_to_notion.py --dry-run                    # Preview
+
+  GOOD - The CLI interface is clean and follows standard argparse
+  conventions. The four flags cover the most common use cases.
+
+  GOOD - The --dry-run flag is a critical safety feature. It shows a
+  clear summary table before committing to API calls.
+
+  GOOD - The progress indicator "[1/30] 2026_CSAT_Q01 -> OK (abc12345...)"
+  gives real-time feedback during sync.
+
+  GOOD - The statistics summary at the start ("풀이 있음: X, 힌트 3단계: X,
+  이미지 있음: X") helps the operator understand data completeness before
+  syncing.
+
+  ISSUE - No --status filter. The sync script always processes all
+  problems matching the year/exam filter, regardless of their Supabase
+  status. If problems are already "ready" in Supabase, re-syncing them
+  to Notion (where they would be set to "검수 필요") could regress their
+  status. Consider adding --status flag to target only needs_review
+  problems.
+
+  ISSUE - No confirmation prompt before full sync. Running
+  "python sync_to_notion.py" with no arguments syncs ALL problems (up to
+  200). There should be a confirmation prompt: "200개 문제를 동기화합니다.
+  계속하시겠습니까? (y/N)" unless --yes flag is passed.
+
+  ISSUE - The 1.5-second sleep between API calls (line 103) is
+  appropriate for Notion rate limits, but the total time for 200 problems
+  would be 5+ minutes. There is no ETA or estimated time display.
+
+  SUGGESTION - Add --subject filter (Math1/Math2) for targeted syncs.
+
+
+3.2 STATUS FLOW EVALUATION
+-----------------------------
+  Current flow:
+    검수 필요 (Needs Review) -> 검수 완료 (Review Complete) -> 발송 준비 (Ready to Send)
+
+  The transitions:
+    - sync_to_notion.py: Creates page with "검수 필요"
+    - Manual: Reviewer changes status to "검수 완료" in Notion
+    - sync_to_supabase: Picks up "검수 완료" and changes to "발송 준비"
+
+  GOOD - Three-state flow is clean and easy to understand.
+
+  ISSUE - There is no "수정 필요" (Needs Revision) or "보류" (Hold) status
+  available in Notion. The Supabase schema supports 'hold' and 'inactive',
+  but the Notion select options only appear to be: 검수 필요, 검수 완료,
+  발송 준비. If a reviewer finds a problem that has errors in the AI-
+  generated content but cannot fix them, there is no way to flag it as
+  blocked. They can only leave it as "검수 필요", which does not
+  distinguish "not yet reviewed" from "reviewed and found issues."
+
+  RECOMMENDATION: Add these Notion status options:
+    - "수정 필요" (Needs Revision) -- reviewed, has issues
+    - "보류" (On Hold) -- deliberately paused
+
+  This gives reviewers 5 status options:
+    검수 필요 -> 수정 필요 (if issues found)
+    검수 필요 -> 검수 완료 (if approved)
+    검수 완료 -> 발송 준비 (automatic via sync)
+    Any -> 보류 (manual hold)
+
+
+3.3 NOTION-TO-SUPABASE REVERSE SYNC
+--------------------------------------
+  (Source: notion_service.py, sync_to_supabase method, lines 607-636)
+
+  ISSUE - The reverse sync (Notion -> Supabase) only picks up problems
+  with status "검수 완료". But reviewers may have edited properties like
+  과목, 단원, 정답, 출제의도 directly in Notion. These edits are only
+  synced when the status reaches "검수 완료". If a reviewer partially
+  reviews (edits some fields but does not change status), those changes
+  are lost if someone re-runs sync_to_notion.py (which overwrites the
+  page).
+
+  RECOMMENDATION: Before overwriting a Notion page, check if the existing
+  page has been modified (e.g., compare updated_at timestamps). Warn
+  the operator if reviewer edits would be overwritten.
+
+
+================================================================================
+4. ADMIN PAGE ALIGNMENT REVIEW
+   (Source: server/problem_routes.py, /problem/admin endpoint)
+================================================================================
+
+4.1 ADMIN PAGE OVERVIEW
+--------------------------
+  The web admin page at /problem/admin provides:
+    - Statistics dashboard (total, ready, needs_review, sent)
+    - Filter bar (search, year, exam, score, status)
+    - Problem table with Send and Crop actions
+    - PDF upload modal (single + batch)
+    - Send preview modal with KakaoTalk confirmation
+
+  This page focuses on the SEND workflow (problem -> KakaoTalk).
+
+
+4.2 ALIGNMENT WITH NOTION REVIEW SYSTEM
+------------------------------------------
+  ISSUE - The admin page and the Notion review system are disconnected.
+  There is no link or reference from the admin page to the Notion review
+  status of a problem. The admin page shows Supabase's `status` field
+  (needs_review, ready, sent) but does not show whether the problem has
+  a Notion page, what the Notion review status is, or provide a link to
+  open the Notion review page.
+
+  RECOMMENDATION: Add a "Notion" column to the admin table that shows:
+    - An icon/badge indicating Notion sync status
+    - A clickable link to open the Notion review page directly
+    - The notion_page_id is already stored in Supabase, so constructing
+      the URL (https://notion.so/{page_id}) is straightforward
+
+  ISSUE - The admin page uses English column headers (Problem ID, Year,
+  Exam, No., Status, Actions) but the Notion database uses Korean
+  property names (문제 ID, 연도, 시험, 문항번호, 상태). This language
+  inconsistency can confuse operators switching between the two
+  interfaces.
+
+  RECOMMENDATION: Either standardize on Korean for both interfaces
+  (recommended, since the target audience is Korean), or provide a
+  language toggle.
+
+  ISSUE - The admin page filter labels use a mix of Korean and English.
+  "검색" (search), "연도" (year), "시험" (exam), "배점" (score), "상태"
+  (status) are in Korean, but button text mixes languages: "Send",
+  "Crop", "새로고침" (refresh). Standardize to Korean: "발송", "크롭".
+
+  ISSUE - The admin page has a "난이도" label on the score filter dropdown
+  (filter-difficulty, line 304-307), but the values are 2/3/4점 (scores),
+  not difficulty levels 1-5. This conflates "배점" (score/points) with
+  "난이도" (difficulty level). The filter should be labeled "배점" to
+  match the Notion property name and avoid confusion.
+
+
+4.3 ADMIN PAGE UX ISSUES (INDEPENDENT OF NOTION)
+---------------------------------------------------
+  (a) The problem table only shows 7 columns: checkbox, Problem ID, Year,
+      Exam, No., Status, Actions. It does not show score, answer, subject,
+      or unit. For quick review triage, showing score and answer in the
+      table would help operators decide which problems to prioritize.
+
+  (b) The Send action has a preview modal (good!), but the Crop action
+      opens a React component with no preview of the current crop state.
+      There is no thumbnail in the table to show which problems have
+      images and which do not.
+
+  (c) No pagination. The table loads up to 100 problems. For larger
+      datasets this will be slow and unwieldy. Consider pagination or
+      virtual scrolling.
+
+  (d) The "PDF 일괄 업로드" (batch PDF upload) feature is excellent for
+      onboarding new exam years, but there is no progress indicator
+      showing which specific questions have been extracted during
+      processing.
+
+
+================================================================================
+5. OVERALL SYSTEM COHESION
+================================================================================
+
+5.1 DATA FLOW SUMMARY
+------------------------
+  Supabase (source of truth) -> sync_to_notion.py -> Notion (review UI)
+  Notion (reviewed) -> sync_to_supabase method -> Supabase (updated)
+  Supabase (ready) -> Admin page -> KakaoTalk (delivery)
+
+  This three-stage pipeline is architecturally sound. Each system plays
+  to its strengths: Supabase for structured data, Notion for human-
+  friendly review, Admin page for operational actions.
+
+
+5.2 KEY GAPS IN THE FLOW
+---------------------------
+  (a) NO BIDIRECTIONAL SYNC AUTOMATION: The Notion -> Supabase sync
+      must be manually triggered. Consider a scheduled job or webhook
+      to automate this.
+
+  (b) NO NOTIFICATION ON REVIEW COMPLETION: When a reviewer marks a
+      problem as "검수 완료" in Notion, there is no automated notification
+      to the operator that problems are ready for Supabase sync. Consider
+      integrating Notion webhook or polling.
+
+  (c) NO REVIEW PROGRESS DASHBOARD: Neither the Notion database views
+      nor the admin page provide an aggregate view of review progress
+      (e.g., "45/60 problems reviewed for 2026 CSAT"). The admin page
+      has total counts but not per-year or per-exam breakdowns that
+      would show review completion percentage.
+
+  (d) HINT EDITING FRICTION: Hints are stored in a separate `hints`
+      table in Supabase and displayed as Notion page body content (in
+      toggles). But they are also stored as Notion properties (힌트1,
+      힌트2, 힌트3). If a reviewer edits a hint in the property field
+      vs. the page body toggle, it is unclear which takes precedence
+      during reverse sync. The sync_to_supabase method reads from
+      properties, not from page body blocks. This should be documented
+      or the page body hints should be read-only.
+
+
+5.3 REVIEWER EXPERIENCE END-TO-END
+-------------------------------------
+  Current reviewer workflow:
+    1. Open Notion database
+    2. Filter by 상태 = "검수 필요"
+    3. Open a problem page
+    4. Check image (scroll down past info callout)
+    5. Verify answer (scroll back up to info callout or check property)
+    6. Open solution toggle, verify
+    7. Open hint toggles, verify each
+    8. Check the 5 to-do items
+    9. Manually change 상태 property to "검수 완료"
+    10. Move to next problem
+
+  FRICTION POINTS:
+    - Step 4-5: Scrolling up and down between image and answer info
+    - Step 9: Must change property manually (no button or shortcut)
+    - No visual indicator of completion progress within a review session
+    - No "next problem" navigation from within the page
+
+
+================================================================================
+6. PRIORITY RECOMMENDATIONS SUMMARY
+================================================================================
+
+  HIGH PRIORITY (should do before next review cycle):
+  -------------------------------------------------------
+  [H1] Add "난이도" (Difficulty) Notion property (number, 1-5)
+       Impact: Enables difficulty tagging, which the DB schema already
+       supports and the Supabase sync already reads.
+
+  [H2] Add "수정 필요" and "보류" status options in Notion
+       Impact: Gives reviewers a way to flag problematic items.
+
+  [H3] Add confirmation prompt to sync_to_notion.py for full sync
+       Impact: Prevents accidental mass-sync that could overwrite
+       reviewer edits.
+
+  [H4] Expand review checklist from 5 to 8 items (add 배점, 정답유형,
+       출제의도, 난이도)
+       Impact: Ensures no review step is missed.
+
+  MEDIUM PRIORITY (improve review quality and speed):
+  -------------------------------------------------------
+  [M1] Make missing data placeholders more visible (warning callouts
+       with ⚠️ emoji instead of plain text)
+       Impact: Reviewers immediately spot incomplete data.
+
+  [M2] Add Notion page link column to admin table
+       Impact: Seamless transition between admin operations and Notion
+       review without manual URL navigation.
+
+  [M3] Add "정답유형" (Answer Type) Notion property (select)
+       Impact: Filterable, editable from table view.
+
+  [M4] Reorder sections: move "풀이" before hints, move "출제 의도"
+       to toggleable position after hints
+       Impact: Better matches the natural review verification order.
+
+  [M5] Standardize admin page labels to Korean
+       Impact: Consistent language across Notion and admin interfaces.
+
+  LOW PRIORITY (nice-to-have improvements):
+  -------------------------------------------------------
+  [L1] Add --status filter to sync_to_notion.py
+  [L2] Add ETA display during sync
+  [L3] Add "검수자" and "검수일" Notion properties
+  [L4] Add review progress dashboard (% complete per year/exam)
+  [L5] Reduce divider count in Notion page (remove first and last)
+  [L6] Add emoji to "풀이" toggle heading for visual consistency
+  [L7] Add image thumbnail column to admin page table
+
+
+================================================================================
+  END OF REPORT
+================================================================================

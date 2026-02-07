@@ -11,7 +11,10 @@ from typing import Optional
 
 import fitz  # PyMuPDF
 
-from .config import OUTPUT_PATH, PDF_DPI
+try:
+    from .config import OUTPUT_PATH, PDF_DPI
+except ImportError:
+    from config import OUTPUT_PATH, PDF_DPI
 
 
 class PDFConverter:

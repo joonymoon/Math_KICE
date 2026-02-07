@@ -1,7 +1,39 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(cd:*)",
+      "Bash(venv/Scripts/pip install:*)",
+      "Bash(venv/Scripts/python.exe -m pip:*)",
+      "Bash(pip install:*)",
+      "Bash(C:/Python311/python.exe -m pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(C:/Python311/python.exe -c \"from notion_client import Client; c = Client\\(auth=''test''\\); print\\(''Version check''\\); print\\(''databases methods:'', [m for m in dir\\(c.databases\\) if not m.startswith\\(''_''\\)]\\)\")",
+      "Bash(timeout:*)",
+      "Bash(curl:*)",
+      "Bash(c:\\\\Math_KICE\\\\venv\\\\Scripts\\\\python.exe -m uvicorn:*)",
+      "Bash(./venv/Scripts/python.exe:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd /c \"taskkill /F /IM python.exe\")",
+      "Bash(cmd /c \"taskkill /F /PID 3868 & taskkill /F /PID 20228 & taskkill /F /PID 39212 & taskkill /F /PID 41796\")",
+      "Bash(powershell:*)",
+      "Bash(netstat:*)",
+      "Bash(grep:*)",
+      "Bash(dir:*)",
+      "Bash(file:*)",
+      "Bash(cmd /c \"copy /b server\\\\problem_routes.py +,,\")",
+      "Bash(start cmd /k \"ngrok http 8000\")",
+      "Bash(more:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:namu.wiki)",
+      "WebFetch(domain:bonbonmath.com)",
+      "WebFetch(domain:33math.com)",
+      "WebFetch(domain:m.i-ez.net)",
+      "Bash(del:*)"
     ],
     "additionalDirectories": [
       "c:\\"

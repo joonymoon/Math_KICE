@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>수능 문제 카드 메이커</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", sans-serif; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useCallback, useEffect } = React;
+
+    // Simple card maker - PDF upload, crop, and save to database
+    function SimpleCardMaker() {
+      const [file, setFile] = useState(null);
+      const [preview, setPreview] = useState(null);
+      const [cropping, setCropping] = useState(false);
+      const [cropRect, setCropRect] = useState(null);
+      const [croppedImage, setCroppedImage] = useState(null);
+      const [meta, setMeta] = useState({
+        number: 1,
+        year: 2025,
+        exam: '수능',
+        difficulty: '3점',
+        category: '미분'
+      });
+      const [saving, setSaving] = useState(false);
+      const [message, setMessage] = useState('');
+      const fileInputRef = useRef();
+      const canvasRef = useRef();
+      const imgRef = useRef();
+
+      const handleFileSelect = (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+
+        setFile(f);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          setPreview(ev.target.result);
+          setCroppedImage(null);
+        };
+        reader.readAsDataURL(f);
+      };
+
+      const startCrop = () => {
+        setCropping(true);
+        setCropRect(null);
+      };
+
+      const handleMouseDown = (e) => {
+        if (!cropping) return;
+        const rect = imgRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        setCropRect({ startX: x, startY: y, endX: x, endY: y });
+      };
+
+      const handleMouseMove = (e) => {
+        if (!cropping || !cropRect || !cropRect.startX) return;
+        const rect = imgRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        setCropRect({ ...cropRect, endX: x, endY: y });
+      };
+
+      const handleMouseUp = () => {
+        if (!cropRect) return;
+
+        const img = imgRef.current;
+        const canvas = document.createElement('canvas');
+        const scaleX = img.naturalWidth / img.width;
+        const scaleY = img.naturalHeight / img.height;
+
+        const x = Math.min(cropRect.startX, cropRect.endX) * scaleX;
+        const y = Math.min(cropRect.startY, cropRect.endY) * scaleY;
+        const w = Math.abs(cropRect.endX - cropRect.startX) * scaleX;
+        const h = Math.abs(cropRect.endY - cropRect.startY) * scaleY;
+
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+
+        setCroppedImage(canvas.toDataURL('image/png'));
+        setCropping(false);
+        setCropRect(null);
+      };
+
+      const saveToDatabase = async () => {
+        if (!croppedImage) {
+          setMessage('❌ 이미지를 먼저 크롭하세요');
+          return;
+        }
+
+        setSaving(true);
+        setMessage('');
+
+        try {
+          // Convert data URL to blob
+          const response = await fetch(croppedImage);
+          const blob = await response.blob();
+
+          const formData = new FormData();
+          const examMap = {
+            '수능': 'CSAT',
+            '6월 모의평가': 'KICE6',
+            '9월 모의평가': 'KICE9'
+          };
+          const examCode = examMap[meta.exam] || 'CSAT';
+          const problemId = `${meta.year}_${examCode}_Q${String(meta.number).padStart(2, '0')}`;
+
+          formData.append('file', blob, `${problemId}.png`);
+          formData.append('problem_id', problemId);
+          formData.append('year', meta.year);
+          formData.append('exam', meta.exam);
+          formData.append('question_no', meta.number);
+          formData.append('difficulty', meta.difficulty);
+          formData.append('category', meta.category);
+
+          const result = await fetch('/api/card/upload', {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await result.json();
+
+          if (data.success) {
+            setMessage(`✅ 저장 완료! ${problemId}`);
+            // Reset
+            setFile(null);
+            setPreview(null);
+            setCroppedImage(null);
+            setMeta({ ...meta, number: meta.number + 1 });
+          } else {
+            setMessage(`❌ 저장 실패: ${data.error || '알 수 없는 오류'}`);
+          }
+        } catch (err) {
+          setMessage(`❌ 오류: ${err.message}`);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const getCropStyle = () => {
+        if (!cropRect || !cropRect.startX) return {};
+        const x = Math.min(cropRect.startX, cropRect.endX);
+        const y = Math.min(cropRect.startY, cropRect.endY);
+        const w = Math.abs(cropRect.endX - cropRect.startX);
+        const h = Math.abs(cropRect.endY - cropRect.startY);
+        return {
+          position: 'absolute',
+          left: x + 'px',
+          top: y + 'px',
+          width: w + 'px',
+          height: h + 'px',
+          border: '2px dashed #3B82F6',
+          pointerEvents: 'none'
+        };
+      };
+
+      return (
+        <div style={{ fontFamily: 'sans-serif', background: '#f5f5f5', minHeight: '100vh', padding: '20px' }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <h1 style={{ marginBottom: '20px', color: '#333' }}>📝 수능 문제 카드 메이커</h1>
+
+            {message && (
+              <div style={{
+                padding: '15px',
+                marginBottom: '20px',
+                background: message.includes('✅') ? '#d4edda' : '#f8d7da',
+                color: message.includes('✅') ? '#155724' : '#721c24',
+                borderRadius: '8px'
+              }}>
+                {message}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              {/* Left: Upload & Crop */}
+              <div style={{ background: 'white', padding: '20px', borderRadius: '12px' }}>
+                <h2 style={{ marginBottom: '15px' }}>1. 이미지 업로드 & 크롭</h2>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  style={{ marginBottom: '15px' }}
+                />
+
+                {preview && (
+                  <div>
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <img
+                        ref={imgRef}
+                        src={preview}
+                        alt="preview"
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '500px',
+                          display: 'block',
+                          cursor: cropping ? 'crosshair' : 'default'
+                        }}
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                      />
+                      {cropRect && <div style={getCropStyle()} />}
+                    </div>
+
+                    <button
+                      onClick={startCrop}
+                      style={{
+                        marginTop: '10px',
+                        padding: '10px 20px',
+                        background: '#3B82F6',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {cropping ? '드래그로 영역 선택...' : '✂️ 크롭 시작'}
+                    </button>
+                  </div>
+                )}
+
+                {croppedImage && (
+                  <div style={{ marginTop: '20px' }}>
+                    <h3>✅ 크롭 완료</h3>
+                    <img src={croppedImage} alt="cropped" style={{ maxWidth: '100%', marginTop: '10px' }} />
+                  </div>
+                )}
+              </div>
+
+              {/* Right: Metadata & Save */}
+              <div style={{ background: 'white', padding: '20px', borderRadius: '12px' }}>
+                <h2 style={{ marginBottom: '15px' }}>2. 문제 정보</h2>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>문제 번호</label>
+                  <input
+                    type="number"
+                    value={meta.number}
+                    onChange={(e) => setMeta({ ...meta, number: parseInt(e.target.value) })}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>연도</label>
+                  <input
+                    type="number"
+                    value={meta.year}
+                    onChange={(e) => setMeta({ ...meta, year: parseInt(e.target.value) })}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>시험</label>
+                  <select
+                    value={meta.exam}
+                    onChange={(e) => setMeta({ ...meta, exam: e.target.value })}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  >
+                    <option>수능</option>
+                    <option>6월 모의평가</option>
+                    <option>9월 모의평가</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>배점</label>
+                  <select
+                    value={meta.difficulty}
+                    onChange={(e) => setMeta({ ...meta, difficulty: e.target.value })}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  >
+                    <option>2점</option>
+                    <option>3점</option>
+                    <option>4점</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>카테고리</label>
+                  <select
+                    value={meta.category}
+                    onChange={(e) => setMeta({ ...meta, category: e.target.value })}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  >
+                    <option>이차함수</option>
+                    <option>삼각함수</option>
+                    <option>수열</option>
+                    <option>미분</option>
+                    <option>적분</option>
+                    <option>확률</option>
+                    <option>통계</option>
+                    <option>기하</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={saveToDatabase}
+                  disabled={!croppedImage || saving}
+                  style={{
+                    width: '100%',
+                    padding: '15px',
+                    background: croppedImage && !saving ? '#16A34A' : '#ccc',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    cursor: croppedImage && !saving ? 'pointer' : 'not-allowed',
+                    marginTop: '20px'
+                  }}
+                >
+                  {saving ? '⏳ 저장 중...' : '💾 데이터베이스에 저장'}
+                </button>
+
+                <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+                  <p style={{ fontSize: '14px', color: '#666' }}>
+                    <strong>저장될 ID:</strong><br/>
+                    {meta.year}_{meta.exam === '수능' ? 'CSAT' : meta.exam === '6월 모의평가' ? 'KICE6' : 'KICE9'}_Q{String(meta.number).padStart(2, '0')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<SimpleCardMaker />, document.getElementById('root'));
+  </script>
+</body>
+</html>

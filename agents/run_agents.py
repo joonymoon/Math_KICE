@@ -1,394 +1,216 @@
 """
-에이전트 실행 스크립트
-5개 에이전트 시스템 실행 및 프로젝트 관리
+KICE Math Agent Team - CLI 인터페이스
+
+사용법:
+    # 파이프라인
+    python -m agents.run_agents pipeline --year 2026 --exam CSAT
+    python -m agents.run_agents pipeline --answer-only --year 2026
+    python -m agents.run_agents pipeline --local 2026_CSAT_PROBLEM.pdf
+
+    # 콘텐츠
+    python -m agents.run_agents content sync-to-notion --year 2026
+    python -m agents.run_agents content sync-from-notion
+    python -m agents.run_agents content validate --year 2026
+
+    # 운영
+    python -m agents.run_agents ops stats
+    python -m agents.run_agents ops health
+    python -m agents.run_agents ops report --year 2026
+    python -m agents.run_agents ops integrity
+
+    # 종합
+    python -m agents.run_agents status
 """
 
 import sys
-import time
-from datetime import datetime
-from typing import Optional
+import json
+from pathlib import Path
 
-from .base import TaskPriority
+# src 모듈 경로
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from .commander import CommanderAgent
-from .designer import DesignerAgent
-from .developer import DeveloperAgent
-from .qa_optimizer import QAOptimizerAgent
-from .business import BusinessAgent
+from .pipeline_agent import PipelineAgent
+from .content_agent import ContentAgent
+from .ops_agent import OpsAgent
 
 
-class AgentOrchestrator:
-    """에이전트 오케스트레이터 - 전체 시스템 관리"""
+class AgentTeam:
+    """에이전트 팀 - 초기화 및 CLI 실행"""
 
     def __init__(self):
-        self.commander: Optional[CommanderAgent] = None
-        self.agents = {}
-        self.initialized = False
-
-    def initialize(self):
-        """시스템 초기화"""
-        print("=" * 60)
-        print("🚀 KICE 수학 카카오톡 발송 서비스 - 에이전트 시스템 시작")
-        print("=" * 60)
-        print()
-
-        # 1. Commander 에이전트 생성
-        print("📦 에이전트 초기화 중...")
         self.commander = CommanderAgent()
-        print(f"   ✅ {self.commander.name} ({self.commander.role}) 생성됨")
+        self.pipeline = PipelineAgent()
+        self.content = ContentAgent()
+        self.ops = OpsAgent()
 
-        # 2. 전문 에이전트들 생성
-        self.agents = {
-            "designer": DesignerAgent(),
-            "developer": DeveloperAgent(),
-            "qa_optimizer": QAOptimizerAgent(),
-            "business": BusinessAgent(),
-        }
+        # Commander에 에이전트 등록
+        self.commander.register_agent(self.pipeline)
+        self.commander.register_agent(self.content)
+        self.commander.register_agent(self.ops)
 
-        # 3. Commander에 에이전트 등록
-        for name, agent in self.agents.items():
-            self.commander.register_agent(agent)
-            print(f"   ✅ {agent.name} ({agent.role}) 등록됨")
+    def print_result(self, result):
+        """결과를 보기 좋게 출력"""
+        if isinstance(result, str):
+            print(result)
+        elif isinstance(result, dict):
+            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+        else:
+            print(result)
 
-        self.initialized = True
-        print()
-        print("✨ 모든 에이전트 초기화 완료!")
-        print()
 
-    def create_project_plan(self) -> dict:
-        """프로젝트 계획 생성"""
-        return {
-            "name": "KICE 수학 카카오톡 발송 서비스",
-            "description": "수능 수학 기출문제를 매일 카카오톡으로 발송하는 서비스",
-            "created_at": datetime.now().isoformat(),
-            "phases": [
-                {
-                    "name": "Phase 1: 기획 및 설계",
-                    "description": "서비스 기획, 디자인, 비즈니스 모델 수립",
-                    "priority": 1,
-                    "tasks": [
-                        {
-                            "title": "요금제 설계",
-                            "description": "무료/유료 요금제 구조 설계",
-                            "assigned_to": "business",
-                            "priority": 1,
-                        },
-                        {
-                            "title": "카카오톡 템플릿 디자인",
-                            "description": "메시지 템플릿 및 UI 설계",
-                            "assigned_to": "designer",
-                            "priority": 1,
-                        },
-                        {
-                            "title": "마케팅 전략 수립",
-                            "description": "타겟 고객 분석 및 마케팅 계획",
-                            "assigned_to": "business",
-                            "priority": 2,
-                        },
-                    ],
-                },
-                {
-                    "name": "Phase 2: 개발",
-                    "description": "백엔드/프론트엔드 개발",
-                    "priority": 2,
-                    "tasks": [
-                        {
-                            "title": "API 서버 개발",
-                            "description": "카카오 API 연동 및 백엔드 개발",
-                            "assigned_to": "developer",
-                            "priority": 1,
-                        },
-                        {
-                            "title": "웹 페이지 개발",
-                            "description": "Next.js 기반 웹 인터페이스 개발",
-                            "assigned_to": "developer",
-                            "priority": 1,
-                        },
-                        {
-                            "title": "결제 시스템 연동",
-                            "description": "토스페이먼츠/카카오페이 연동",
-                            "assigned_to": "developer",
-                            "priority": 2,
-                        },
-                    ],
-                },
-                {
-                    "name": "Phase 3: 품질 관리",
-                    "description": "테스트 및 최적화",
-                    "priority": 3,
-                    "tasks": [
-                        {
-                            "title": "테스트 작성",
-                            "description": "단위/통합/E2E 테스트 작성",
-                            "assigned_to": "qa_optimizer",
-                            "priority": 1,
-                        },
-                        {
-                            "title": "성능 최적화",
-                            "description": "응답 시간 및 성능 개선",
-                            "assigned_to": "qa_optimizer",
-                            "priority": 2,
-                        },
-                        {
-                            "title": "모니터링 시스템 구축",
-                            "description": "서비스 모니터링 및 알림 설정",
-                            "assigned_to": "qa_optimizer",
-                            "priority": 2,
-                        },
-                    ],
-                },
-                {
-                    "name": "Phase 4: 런칭 준비",
-                    "description": "최종 점검 및 런칭",
-                    "priority": 4,
-                    "tasks": [
-                        {
-                            "title": "사용자 분석 준비",
-                            "description": "분석 대시보드 및 지표 설정",
-                            "assigned_to": "business",
-                            "priority": 2,
-                        },
-                        {
-                            "title": "브랜딩 에셋 준비",
-                            "description": "로고, 아이콘, 마케팅 이미지 제작",
-                            "assigned_to": "designer",
-                            "priority": 2,
-                        },
-                        {
-                            "title": "최종 QA 점검",
-                            "description": "런칭 전 전체 시스템 점검",
-                            "assigned_to": "qa_optimizer",
-                            "priority": 1,
-                        },
-                    ],
-                },
-            ],
-        }
-
-    def start_project(self):
-        """프로젝트 시작"""
-        if not self.initialized:
-            self.initialize()
-
-        print("📋 프로젝트 계획 생성 중...")
-        project_plan = self.create_project_plan()
-        print(f"   프로젝트: {project_plan['name']}")
-        print(f"   총 {len(project_plan['phases'])}개 Phase")
-        print()
-
-        # Commander에게 프로젝트 시작 지시
-        self.commander.start_project(project_plan)
-
-    def run(self, max_iterations: int = 10):
-        """에이전트 시스템 실행"""
-        if not self.initialized:
-            self.initialize()
-
-        self.start_project()
-
-        print()
-        print("🔄 에이전트 실행 사이클 시작...")
-        print()
-
-        for i in range(max_iterations):
-            print(f"--- Iteration {i + 1}/{max_iterations} ---")
-
-            # 실행 사이클
-            progress = self.commander.run_iteration()
-
-            # 진행 상황 표시
-            print(f"   진행률: {progress['progress_percent']}%")
-            print(f"   완료: {progress['completed']}, 진행중: {progress['in_progress']}, 대기: {progress['pending']}")
-
-            # 모든 작업 완료 확인
-            if progress['pending'] == 0 and progress['in_progress'] == 0:
-                print()
-                print("✅ 모든 작업 완료!")
-                break
-
-            # 시뮬레이션을 위한 대기
-            time.sleep(0.5)
-
-        print()
-        print(self.commander.generate_project_report())
-
-    def execute_single_task(self, agent_name: str, task_type: str):
-        """단일 작업 실행"""
-        if not self.initialized:
-            self.initialize()
-
-        agent = self.agents.get(agent_name) or (
-            self.commander if agent_name == "commander" else None
+def cmd_pipeline(team: AgentTeam, args):
+    """파이프라인 명령 처리"""
+    if args.answer_only:
+        result = team.pipeline.process_answers(
+            year=args.year,
+            exam=args.exam,
         )
+    elif args.local:
+        result = team.pipeline.upload_local_pdf(
+            pdf_path=args.local,
+            year=args.year or 2026,
+            exam=args.exam or "CSAT",
+        )
+    elif args.status:
+        result = team.pipeline.get_pipeline_status()
+    else:
+        result = team.pipeline.run_full_pipeline(
+            year=args.year,
+            exam=args.exam,
+            dry_run=args.dry_run,
+            no_move=args.no_move,
+        )
+    team.print_result(result)
 
-        if not agent:
-            print(f"❌ 에이전트를 찾을 수 없음: {agent_name}")
-            return None
 
-        print(f"🔧 {agent.name}에게 '{task_type}' 작업 실행...")
+def cmd_content(team: AgentTeam, args):
+    """콘텐츠 명령 처리"""
+    action = args.action
 
-        # 작업 유형에 따른 실행
-        if agent_name == "designer":
-            if "템플릿" in task_type or "template" in task_type.lower():
-                return agent.create_kakao_template("daily_problem")
-            elif "레이아웃" in task_type:
-                return agent.design_problem_image_layout()
-            elif "ui" in task_type.lower():
-                return agent.design_web_ui()
-            elif "브랜딩" in task_type:
-                return agent.create_branding_assets()
+    if action == "sync-to-notion":
+        result = team.content.sync_to_notion(
+            year=args.year,
+            exam=args.exam,
+            status=args.filter_status,
+            problem_id=args.problem_id,
+            dry_run=args.dry_run,
+        )
+    elif action == "sync-from-notion":
+        result = team.content.sync_from_notion()
+    elif action == "validate":
+        result = team.content.validate_problems(
+            year=args.year,
+            exam=args.exam,
+        )
+    elif action == "review-status":
+        result = team.content.get_review_status()
+    else:
+        print(f"알 수 없는 액션: {action}")
+        return
 
-        elif agent_name == "developer":
-            if "api" in task_type.lower():
-                return agent.generate_api_routes()
-            elif "페이지" in task_type or "page" in task_type.lower():
-                return agent.generate_pages()
-            elif "컴포넌트" in task_type or "component" in task_type.lower():
-                return agent.generate_components()
+    team.print_result(result)
 
-        elif agent_name == "qa_optimizer":
-            if "테스트" in task_type or "test" in task_type.lower():
-                return agent.generate_test_suite()
-            elif "모니터링" in task_type:
-                return agent.setup_monitoring()
-            elif "최적화" in task_type:
-                return agent.optimize_performance()
 
-        elif agent_name == "business":
-            if "요금" in task_type or "pricing" in task_type.lower():
-                return agent.design_pricing_plans()
-            elif "결제" in task_type or "payment" in task_type.lower():
-                return agent.design_payment_system()
-            elif "마케팅" in task_type:
-                return agent.create_marketing_strategy()
-            elif "보고서" in task_type or "report" in task_type.lower():
-                return agent.create_business_report()
+def cmd_ops(team: AgentTeam, args):
+    """운영 명령 처리"""
+    action = args.action
 
-        print(f"⚠️ 알 수 없는 작업 유형: {task_type}")
-        return None
+    if action == "stats":
+        result = team.ops.get_stats()
+    elif action == "health":
+        result = team.ops.health_check()
+    elif action == "report":
+        report_text = team.ops.print_report(year=args.year)
+        print(report_text)
+        return
+    elif action == "integrity":
+        result = team.ops.check_data_integrity()
+    else:
+        print(f"알 수 없는 액션: {action}")
+        return
 
-    def get_agent_capabilities(self):
-        """모든 에이전트 역량 조회"""
-        if not self.initialized:
-            self.initialize()
+    team.print_result(result)
 
-        print()
-        print("📚 에이전트 역량 목록")
-        print("=" * 50)
 
-        print(f"\n🎖️ {self.commander.name} ({self.commander.role})")
-        for cap in self.commander.capabilities:
-            print(f"   - {cap}")
-
-        for name, agent in self.agents.items():
-            print(f"\n👤 {agent.name} ({agent.role})")
-            for cap in agent.capabilities:
-                print(f"   - {cap}")
-
-        print()
-
-    def demo(self):
-        """데모 실행 - 각 에이전트 주요 기능 시연"""
-        if not self.initialized:
-            self.initialize()
-
-        print()
-        print("🎬 에이전트 시스템 데모")
-        print("=" * 60)
-
-        # 1. Designer 데모
-        print("\n--- Designer 에이전트 데모 ---")
-        designer = self.agents["designer"]
-        template = designer.create_kakao_template("daily_problem")
-        print(f"   ✅ 카카오톡 템플릿 생성: {template['name']}")
-
-        layout = designer.design_problem_image_layout()
-        print(f"   ✅ 문제 이미지 레이아웃 설계: {layout['name']}")
-
-        # 2. Developer 데모
-        print("\n--- Developer 에이전트 데모 ---")
-        developer = self.agents["developer"]
-        pages = developer.generate_pages()
-        print(f"   ✅ 페이지 생성: {len(pages)}개")
-
-        api_routes = developer.generate_api_routes()
-        print(f"   ✅ API 라우트 생성: {len(api_routes)}개")
-
-        # 3. QA/Optimizer 데모
-        print("\n--- QA/Optimizer 에이전트 데모 ---")
-        qa = self.agents["qa_optimizer"]
-        tests = qa.generate_test_suite()
-        total_tests = sum(len(v) for v in tests.values() if isinstance(v, list))
-        print(f"   ✅ 테스트 스위트 생성: {total_tests}개 테스트")
-
-        monitoring = qa.setup_monitoring()
-        print(f"   ✅ 모니터링 설정: {len(monitoring['metrics'])}개 메트릭")
-
-        # 4. Business 데모
-        print("\n--- Business 에이전트 데모 ---")
-        business = self.agents["business"]
-        plans = business.design_pricing_plans()
-        print(f"   ✅ 요금제 설계: {len(plans)}개 플랜")
-
-        strategy = business.create_marketing_strategy()
-        print(f"   ✅ 마케팅 전략 수립: {len(strategy['campaigns'])}개 캠페인")
-
-        print()
-        print("=" * 60)
-        print("✨ 데모 완료!")
-        print()
+def cmd_status(team: AgentTeam, args):
+    """전체 상태 보고"""
+    print(team.commander.generate_status_report())
 
 
 def main():
-    """메인 함수"""
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="KICE 수학 카카오톡 발송 서비스 - 에이전트 시스템"
+        description="KICE Math Agent Team",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+예시:
+  python -m agents.run_agents ops stats              # DB 통계
+  python -m agents.run_agents ops health             # 서비스 헬스체크
+  python -m agents.run_agents content validate       # 데이터 검증
+  python -m agents.run_agents pipeline --year 2026   # 파이프라인 실행
+  python -m agents.run_agents status                 # 전체 현황
+        """,
     )
-    parser.add_argument(
-        "--mode",
-        choices=["run", "demo", "capabilities", "task"],
-        default="demo",
-        help="실행 모드 선택",
+    subparsers = parser.add_subparsers(dest="command", help="실행할 명령")
+
+    # ─── pipeline ───
+    p_pipe = subparsers.add_parser("pipeline", help="PDF 처리 파이프라인")
+    p_pipe.add_argument("--year", type=int, help="연도 필터")
+    p_pipe.add_argument("--exam", choices=["CSAT", "KICE6", "KICE9"], help="시험 유형")
+    p_pipe.add_argument("--answer-only", action="store_true", help="정답만 처리")
+    p_pipe.add_argument("--local", help="로컬 PDF 경로")
+    p_pipe.add_argument("--dry-run", action="store_true", help="미리보기")
+    p_pipe.add_argument("--no-move", action="store_true", help="파일 이동 안함")
+    p_pipe.add_argument("--status", action="store_true", help="파이프라인 현황")
+    p_pipe.set_defaults(func=cmd_pipeline)
+
+    # ─── content ───
+    p_content = subparsers.add_parser("content", help="콘텐츠 관리 (Notion 동기화/검증)")
+    p_content.add_argument(
+        "action",
+        choices=["sync-to-notion", "sync-from-notion", "validate", "review-status"],
+        help="실행할 액션",
     )
-    parser.add_argument(
-        "--agent",
-        choices=["commander", "designer", "developer", "qa_optimizer", "business"],
-        help="작업 실행할 에이전트 (task 모드에서 사용)",
+    p_content.add_argument("--year", type=int, help="연도 필터")
+    p_content.add_argument("--exam", choices=["CSAT", "KICE6", "KICE9"], help="시험 유형")
+    p_content.add_argument("--problem-id", help="단일 문제 ID")
+    p_content.add_argument("--filter-status", help="상태 필터 (ready, needs_review 등)")
+    p_content.add_argument("--dry-run", action="store_true", help="미리보기")
+    p_content.set_defaults(func=cmd_content)
+
+    # ─── ops ───
+    p_ops = subparsers.add_parser("ops", help="운영 관리 (통계/헬스체크)")
+    p_ops.add_argument(
+        "action",
+        choices=["stats", "health", "report", "integrity"],
+        help="실행할 액션",
     )
-    parser.add_argument(
-        "--task-type",
-        help="실행할 작업 유형 (task 모드에서 사용)",
-    )
-    parser.add_argument(
-        "--iterations",
-        type=int,
-        default=10,
-        help="최대 실행 사이클 수 (run 모드에서 사용)",
-    )
+    p_ops.add_argument("--year", type=int, help="연도 필터 (report용)")
+    p_ops.set_defaults(func=cmd_ops)
+
+    # ─── status ───
+    p_status = subparsers.add_parser("status", help="전체 시스템 현황")
+    p_status.set_defaults(func=cmd_status)
 
     args = parser.parse_args()
 
-    orchestrator = AgentOrchestrator()
+    if not args.command:
+        parser.print_help()
+        return
 
-    if args.mode == "run":
-        orchestrator.run(max_iterations=args.iterations)
+    # 에이전트 팀 초기화
+    print("=" * 55)
+    print("  KICE Math Agent Team")
+    print("=" * 55)
 
-    elif args.mode == "demo":
-        orchestrator.demo()
+    team = AgentTeam()
 
-    elif args.mode == "capabilities":
-        orchestrator.get_agent_capabilities()
+    print()
 
-    elif args.mode == "task":
-        if not args.agent or not args.task_type:
-            print("❌ task 모드에서는 --agent와 --task-type이 필요합니다.")
-            sys.exit(1)
-        result = orchestrator.execute_single_task(args.agent, args.task_type)
-        if result:
-            import json
-            print("\n📄 결과:")
-            print(json.dumps(result, indent=2, ensure_ascii=False))
+    # 명령 실행
+    args.func(team, args)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ Supabase 연동 서비스
 - Notion 검수 결과 동기화
 """
 
+import re
 from typing import Optional
 from datetime import datetime
 
@@ -98,7 +99,8 @@ class SupabaseService:
         exam: Optional[str] = None,
         status: Optional[str] = None,
         subject: Optional[str] = None,
-        limit: int = 100,
+        score: Optional[int] = None,
+        limit: int = 500,
     ) -> list:
         """
         조건별 문제 목록 조회
@@ -108,6 +110,7 @@ class SupabaseService:
             exam: 시험 유형 필터 (CSAT, KICE6, KICE9)
             status: 상태 필터 (needs_review, ready, hold, inactive)
             subject: 과목 필터 (Math1, Math2)
+            score: 난이도 필터 (2, 3, 4점)
             limit: 최대 결과 수
 
         Returns:
@@ -123,6 +126,8 @@ class SupabaseService:
             query = query.eq("status", status)
         if subject:
             query = query.eq("subject", subject)
+        if score:
+            query = query.eq("score", score)
 
         response = query.order("year", desc=True) \
             .order("exam") \
@@ -285,7 +290,6 @@ class SupabaseService:
             # URL에서 파일 ID 추출 (간단한 방법)
             if "drive.google.com" in source_ref:
                 # /d/FILE_ID/ 또는 id=FILE_ID 형식
-                import re
                 match = re.search(r'/d/([a-zA-Z0-9_-]+)', source_ref)
                 if match:
                     file_ids.add(match.group(1))
@@ -295,16 +299,6 @@ class SupabaseService:
                         file_ids.add(match.group(1))
 
         return file_ids
-
-    def mark_file_processed(
-        self,
-        file_id: str,
-        file_name: str,
-        problem_id: str
-    ):
-        """파일 처리 완료 표시 (별도 테이블 사용 가능)"""
-        # problems 테이블의 source_ref에 이미 저장됨
-        pass
 
     # ============================================
     # 통계

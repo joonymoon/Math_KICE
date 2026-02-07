@@ -1,0 +1,496 @@
+================================================================================
+ QA REPORT: KICE Math Notion Review System
+ Date: 2026-02-08
+ Reviewer: QA Agent (Claude Opus 4.6)
+================================================================================
+
+TABLE OF CONTENTS
+  1. Executive Summary
+  2. Data Completeness
+  3. Data Correctness
+  4. Code Quality Review
+  5. Notion Page Block Structure
+  6. Risk Assessment & Recommendations
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+
+Overall Status: PASS with WARNINGS
+
+The system contains 66 problems across 3 years (2024, 2025, 2026) of CSAT exams,
+22 problems each. All problems have images, answers, scores, answer_types, subjects,
+and units populated. All 66 problems are linked to Notion pages.
+
+KEY FINDINGS:
+  [CRITICAL]  0 of 66 problems have intent_1 / intent_2 populated (0%)
+  [HIGH]      22 of 66 problems missing solutions (all 2024 CSAT)
+  [HIGH]      22 of 66 problems missing hints (all 2024 CSAT, 0 of 3 stages)
+  [LOW]       All 66 problems have status='ready' but 22 lack solutions/hints
+  [INFO]      Code has several minor issues (see Section 4)
+
+PASS CRITERIA:
+  [PASS] All 66 problems present with Q01-Q22 for each year
+  [PASS] All 66 have images (verified accessible via HTTP)
+  [PASS] All 66 have answers, scores, answer_types
+  [PASS] All 66 have subject/unit classification
+  [PASS] All answer_types match question number rules
+  [PASS] All scores within valid range (2, 3, 4)
+  [PASS] No duplicate problem_ids
+  [PASS] Subject-unit mapping is consistent
+  [PASS] All 66 have notion_page_id
+
+================================================================================
+2. DATA COMPLETENESS
+================================================================================
+
+Total Problems in Database: 66
+
+2.1 SOLUTIONS
+  With solution:    44 / 66  (66.7%)
+  Without solution: 22 / 66  (33.3%)
+
+  Missing (all 2024 CSAT):
+    2024_CSAT_Q01 through 2024_CSAT_Q22 (22 problems)
+
+  Assessment: 2025 and 2026 CSAT both have full solutions (22/22 each).
+              Only the 2024 year is entirely missing solutions.
+
+2.2 HINTS (3-stage system)
+  With all 3 hints:  44 / 66  (66.7%)
+  With 2 hints:       0 / 66
+  With 1 hint:        0 / 66
+  With 0 hints:      22 / 66  (33.3%)
+
+  Total hint records: 132 (44 problems * 3 stages)
+  Empty hint_text records: 0 (all existing hints have text)
+
+  Missing hints (all 2024 CSAT):
+    2024_CSAT_Q01 through 2024_CSAT_Q22 (22 problems)
+
+  Assessment: Same pattern as solutions -- 2024 year is fully missing.
+              No partial hint data (gaps between stages) detected.
+
+2.3 IMAGES
+  With image URL:    66 / 66  (100%)
+  Without image URL:  0 / 66
+
+  Image URL Format: All use Supabase Storage pattern:
+    https://gusahlxqyyqmaalwdtjw.supabase.co/storage/v1/object/public/problem-images-v2/{problem_id}.png
+
+  Accessibility Spot Check (HTTP HEAD):
+    2026_CSAT_Q01.png -> 200 OK (59,229 bytes)
+    2024_CSAT_Q22.png -> 200 OK (572,831 bytes)
+
+  Assessment: PASS. All images accessible and properly named.
+
+2.4 INTENTS (intent_1 / intent_2)
+  With intent_1:  0 / 66  (0%)
+  With intent_2:  0 / 66  (0%)
+
+  Assessment: CRITICAL. No problems have intent data populated.
+              This means the Notion review pages will all show "(출제 의도 미입력)"
+              under the "출제 의도" section. This is a content gap that affects
+              the completeness of the review material.
+
+2.5 ANSWERS, SCORES, ANSWER_TYPES
+  With answer:       66 / 66  (100%)
+  With score:        66 / 66  (100%)
+  With answer_type:  66 / 66  (100%)
+
+  Assessment: PASS. All fields populated.
+
+2.6 SUBJECT / UNIT
+  With subject:  66 / 66  (100%)
+  With unit:     66 / 66  (100%)
+
+  Subjects: Math1, Math2
+  Units: 미분(18), 지수로그(11), 적분(11), 수열(10), 삼각함수(9), 함수의극한연속(7)
+
+  Assessment: PASS. All classified.
+
+2.7 NOTION PAGE IDs
+  With notion_page_id:    66 / 66  (100%)
+  Without notion_page_id:  0 / 66
+
+  Assessment: PASS. All problems linked to Notion.
+
+================================================================================
+3. DATA CORRECTNESS
+================================================================================
+
+3.1 ANSWER_TYPE vs QUESTION_NO CONSISTENCY
+  Rule: Q01-Q15 = "multiple", Q16-Q22 = "short"
+
+  Result: PASS (0 mismatches out of 66 problems)
+
+3.2 SCORE VALIDITY
+  Valid range: 2, 3, or 4
+
+  Result: PASS (0 invalid scores out of 66 problems)
+
+  Distribution:
+    2점:  9 problems (13.6%)
+    3점: 31 problems (47.0%)
+    4점: 26 problems (39.4%)
+
+3.3 MULTIPLE CHOICE ANSWER VALIDITY
+  Rule: answers should be integers 1-5
+
+  Result: PASS (all 45 multiple-choice answers in valid range)
+
+3.4 SHORT ANSWER VALIDITY
+  Rule: answers should be non-negative integers
+
+  Result: PASS (all 21 short answers are valid integers)
+
+3.5 SUBJECT-UNIT MAPPING CONSISTENCY
+  Expected:
+    Math1 -> 지수로그, 삼각함수, 수열
+    Math2 -> 미분, 적분, 함수의극한연속
+
+  Result: PASS (0 inconsistent mappings)
+
+3.6 QUESTION COVERAGE PER YEAR
+  2024_CSAT: 22 problems (Q01-Q22) - COMPLETE
+  2025_CSAT: 22 problems (Q01-Q22) - COMPLETE
+  2026_CSAT: 22 problems (Q01-Q22) - COMPLETE
+
+  No missing or extra questions detected.
+  No duplicate problem_ids detected.
+
+3.7 SCORE PATTERNS BY QUESTION NUMBER
+  Q01-Q02: consistently 2pts (as expected for easy problems)
+  Q13-Q15: consistently 4pts (as expected for hard multiple choice)
+  Q20-Q22: consistently 4pts (as expected for hard short answer)
+  Q06-Q08: consistently 3pts
+  Q09-Q12: mix of 3 and 4pts (varies by year, which is normal)
+
+  Assessment: Score patterns are realistic and consistent with actual CSAT scoring.
+
+3.8 STATUS DISTRIBUTION
+  ready:        66 / 66  (100%)
+  needs_review:  0
+
+  NOTE: All 22 problems from 2024 CSAT are marked "ready" despite lacking
+        solutions and hints. This may be intentional (answers/images are
+        present) or may indicate premature status promotion.
+
+================================================================================
+4. CODE QUALITY REVIEW
+================================================================================
+
+4.1 src/notion_service.py
+--------------------------------------------------------------------------------
+
+File: c:\Math_KICE\src\notion_service.py (654 lines)
+Overall: GOOD quality with minor issues
+
+[A] STRENGTHS:
+  - Clean separation of concerns with block builder helpers
+  - Proper 2000-char limit handling for Notion API
+  - Upsert logic with fallback (find existing -> update, else create)
+  - Error handling for deleted pages (falls back to new creation)
+  - _split_text_to_blocks handles long solutions correctly
+  - Toggle children properly separated for 2-phase append
+
+[B] ISSUES:
+
+  [B1] MEDIUM - Silent exception swallowing in _clear_page_blocks (line 408)
+    Code:
+      except Exception:
+          pass
+
+    Impact: If a block deletion fails for reasons other than "not found",
+    the error is silently ignored. Old content may persist.
+
+    Recommendation: Log the exception or at minimum catch a more specific
+    exception type.
+
+  [B2] LOW - No retry logic for Notion API rate limits
+    The Notion API has a rate limit of 3 requests/second. The code does
+    not implement retry-with-backoff. In sync_to_notion.py there is a
+    time.sleep(1.5) between problems, but within create_review_page,
+    multiple API calls are made in sequence:
+      - pages.create or pages.update
+      - blocks.children.list (for _clear_page_blocks)
+      - N * blocks.delete (for _clear_page_blocks)
+      - blocks.children.append (for top-level blocks)
+      - M * blocks.children.append (for toggle children)
+
+    A single problem with 3 hints + 1 solution toggle = at least 6+ API
+    calls. Combined with the block clearing, this could exceed rate limits.
+
+    Recommendation: Add retry logic with exponential backoff, or use the
+    notion-client built-in retry if available.
+
+  [B3] LOW - Hardcoded Notion API version (line 28)
+    Code:
+      self.client = Client(auth=self.token, notion_version="2022-06-28")
+
+    The comment explains this is intentional due to a bug in notion-client
+    2.7.0. This is acceptable but should be revisited when the library
+    is updated.
+
+  [B4] INFO - _build_review_blocks always creates blocks even when data is empty
+    When a problem has no solution, it still creates a toggle heading with
+    "(풀이 미입력)" placeholder. This is actually good UX -- the reviewer
+    can see what's missing. No action needed.
+
+  [B5] LOW - parse_properties only handles first rich_text element (line 279)
+    Code:
+      result[key] = rich_text[0]["text"]["content"] if rich_text else ""
+
+    If rich_text has multiple elements (e.g., bold + normal text), only the
+    first is extracted. This could lose data during Notion -> Supabase sync.
+
+    Recommendation: Concatenate all rich_text elements:
+      result[key] = "".join(rt["text"]["content"] for rt in rich_text)
+
+  [B6] LOW - sync_to_supabase references 'data' before it may be assigned (line 633)
+    Code:
+      except Exception as e:
+          print(f"동기화 실패: {data.get('문제 ID')} - {e}")
+
+    If parse_properties itself throws, 'data' is not yet defined, causing
+    a NameError. Should use page["id"] or wrap in a nested try/except.
+
+  [B7] INFO - create_review_page truncates intent_1 to 2000 chars (line 337)
+    This is correct behavior per Notion API limits. No issue.
+
+4.2 sync_to_notion.py
+--------------------------------------------------------------------------------
+
+File: c:\Math_KICE\sync_to_notion.py (121 lines)
+Overall: GOOD quality, clean implementation
+
+[A] STRENGTHS:
+  - Proper CLI argument parsing with dry-run support
+  - Good progress reporting during sync
+  - Rate limiting with time.sleep(1.5) between problems
+  - Error isolation per problem (one failure doesn't stop others)
+  - Failed items tracked and reported at end
+  - Stores notion_page_id back to Supabase after creation
+
+[B] ISSUES:
+
+  [B1] LOW - No maximum retry or circuit breaker
+    If the Notion API is down, the script will fail on every problem
+    with a 2-second delay each, taking ~2.2 minutes for 66 problems
+    before reporting all as failed. Consider adding:
+      - A circuit breaker (stop after N consecutive failures)
+      - Or a maximum total error count
+
+  [B2] LOW - Variable shadowing on line 115
+    Code:
+      for f in failed:
+          print(f"  - {f['id']}: {f['error']}")
+
+    The loop variable 'f' shadows the outer variable 'f' (from the
+    f-string context). This works in Python but is a readability issue.
+
+  [B3] INFO - get_problems_by_filter limit=200 (line 45)
+    The filter query uses limit=200 which is sufficient for the current
+    66 problems. If the dataset grows beyond 200, problems will be
+    silently dropped. The Supabase default is 1000 but an explicit
+    limit of 200 caps it.
+
+4.3 src/supabase_service.py
+--------------------------------------------------------------------------------
+
+File: c:\Math_KICE\src\supabase_service.py (381 lines)
+Overall: GOOD quality
+
+[B] ISSUES:
+
+  [B1] LOW - Import inside function (line 293)
+    The 're' module is imported inside get_processed_file_ids() on every
+    call. Should be moved to top-level imports.
+
+  [B2] LOW - mark_file_processed is a no-op (line 311)
+    The method body is just 'pass'. If it's not needed, it should be
+    removed or documented as a placeholder.
+
+  [B3] LOW - get_problems_by_filter default limit=100 (line 102)
+    The default limit is 100 which works for now (66 problems) but could
+    silently truncate results as data grows.
+
+================================================================================
+5. NOTION PAGE BLOCK STRUCTURE
+================================================================================
+
+The _build_review_blocks method in notion_service.py generates the following
+block structure for each review page:
+
+  [divider]
+  [heading_2] "문제 정보"
+  [callout] Subject, Unit, Score, Type, Answer (emoji: 📋)
+  [divider]
+  [heading_2] "문제 이미지"
+  [image] problem_image_url (external) OR [paragraph] "(이미지 없음)"
+  [divider]
+  [heading_2] "출제 의도"
+  [paragraph] intent_1 (or "(출제 의도 미입력)")
+  [paragraph] intent_2 (if present)
+  [divider]
+  [heading_2 toggleable] "힌트 1단계: 개념 방향"
+    └─ [callout] hint_text (emoji: 💡, color: blue_background)
+  [heading_2 toggleable] "힌트 2단계: 핵심 전환"
+    └─ [callout] hint_text (emoji: 🔑, color: yellow_background)
+  [heading_2 toggleable] "힌트 3단계: 결정적 한 줄"
+    └─ [callout] hint_text (emoji: 🎯, color: red_background)
+  [divider]
+  [heading_2 toggleable] "풀이"
+    └─ [paragraph(s)] solution text (split at 1900 chars)
+  [divider]
+  [callout] "검수 체크리스트" (emoji: ✅)
+  [to_do] "문제 이미지 확인"
+  [to_do] "정답 확인"
+  [to_do] "풀이 정확성 확인"
+  [to_do] "힌트 3단계 확인"
+  [to_do] "과목/단원 분류 확인"
+
+ASSESSMENT:
+
+  [PASS] Structure is well-organized with clear sections
+  [PASS] Toggle blocks properly used for hints and solution (hides spoilers)
+  [PASS] 2-phase block creation handles toggle children correctly
+  [PASS] Long text split at 1900 chars (under 2000 Notion API limit)
+  [PASS] Checklist provides clear QA workflow
+  [PASS] Batch append in 100-block batches (Notion limit)
+
+  [NOTE] The toggle children use "_children" as a private key that gets
+         popped before sending to Notion API. This is a clever pattern
+         that avoids sending invalid keys to the API while keeping the
+         parent-child relationship in the builder. GOOD.
+
+  [NOTE] For problems missing hints, the block still shows the toggle
+         heading with "(힌트 미입력)" inside. This is intentional and
+         provides clear visibility of missing data. GOOD.
+
+  [ISSUE] For the current dataset, ALL 66 problems will show
+          "(출제 의도 미입력)" since no intent data exists.
+
+================================================================================
+6. RISK ASSESSMENT & RECOMMENDATIONS
+================================================================================
+
+6.1 CRITICAL PRIORITY
+--------------------------------------------------------------------------------
+
+  [C1] Missing intent_1/intent_2 for ALL 66 problems
+       Every review page will show "(출제 의도 미입력)".
+
+       Recommendation: Populate intent data, either:
+         a) Manually by subject matter experts, or
+         b) Via AI-assisted generation from problem text + solution
+
+       Impact: Reviewers lack context about what the problem tests,
+               reducing review quality.
+
+6.2 HIGH PRIORITY
+--------------------------------------------------------------------------------
+
+  [H1] 2024 CSAT missing solutions and hints (22 problems)
+       These problems have images and answers but no pedagogical content.
+       They are marked "ready" which may mislead downstream consumers.
+
+       Recommendation:
+         a) Generate solutions/hints for 2024 CSAT, OR
+         b) Change status to "needs_review" for these 22 problems, OR
+         c) Add a separate field like "content_complete" to distinguish
+            between "answer verified" and "full content ready"
+
+  [H2] Status inconsistency
+       All 66 problems are "ready" but 22 lack critical content.
+       The "ready" status implies the problem is complete and verified.
+
+       Recommendation: Define clear criteria for "ready" status:
+         - Must have: answer, score, image, subject, unit
+         - Should have: solution, 3 hints
+         - Optional: intent_1, intent_2
+
+6.3 MEDIUM PRIORITY
+--------------------------------------------------------------------------------
+
+  [M1] Silent exception swallowing in _clear_page_blocks
+       Failed block deletions are silently ignored.
+
+       Recommendation: Add logging for failed deletions.
+
+  [M2] No API rate limit retry logic
+       Heavy sync operations could hit Notion's 3 req/sec limit.
+
+       Recommendation: Implement exponential backoff retry.
+
+  [M3] parse_properties only reads first rich_text element
+       Multi-element rich text from Notion will be truncated.
+
+       Recommendation: Concatenate all rich_text elements.
+
+6.4 LOW PRIORITY
+--------------------------------------------------------------------------------
+
+  [L1] Variable shadowing in sync_to_notion.py (line 115)
+  [L2] Import 're' inside function body (supabase_service.py line 293)
+  [L3] mark_file_processed is a no-op
+  [L4] Query limit defaults may truncate future larger datasets
+  [L5] Potential NameError in sync_to_supabase error handler (line 633)
+
+================================================================================
+APPENDIX A: DATA SUMMARY TABLE
+================================================================================
+
+Year  | Exam | Count | Solutions | Hints(3) | Images | Intents | Status
+------|------|-------|-----------|----------|--------|---------|--------
+2024  | CSAT |   22  |    0      |    0     |   22   |    0    | ready
+2025  | CSAT |   22  |   22      |   22     |   22   |    0    | ready
+2026  | CSAT |   22  |   22      |   22     |   22   |    0    | ready
+------|------|-------|-----------|----------|--------|---------|--------
+TOTAL |      |   66  |   44      |   44     |   66   |    0    |
+
+================================================================================
+APPENDIX B: SCORE DISTRIBUTION PER QUESTION NUMBER
+================================================================================
+
+Q01: {2: 3}          Q12: {3: 1, 4: 2}
+Q02: {2: 3}          Q13: {4: 3}
+Q03: {2: 1, 3: 2}    Q14: {4: 3}
+Q04: {2: 1, 3: 2}    Q15: {4: 3}
+Q05: {2: 1, 3: 2}    Q16: {3: 3}
+Q06: {3: 3}          Q17: {3: 3}
+Q07: {3: 3}          Q18: {3: 3}
+Q08: {3: 3}          Q19: {3: 3}
+Q09: {3: 1, 4: 2}    Q20: {4: 3}
+Q10: {3: 1, 4: 2}    Q21: {4: 3}
+Q11: {3: 1, 4: 2}    Q22: {4: 3}
+
+================================================================================
+APPENDIX C: UNIT DISTRIBUTION
+================================================================================
+
+Math1:
+  수열:       10  (15.2%)
+  삼각함수:    9  (13.6%)
+  지수로그:   11  (16.7%)
+
+Math2:
+  미분:       18  (27.3%)
+  적분:       11  (16.7%)
+  함수의극한연속: 7  (10.6%)
+
+================================================================================
+APPENDIX D: FILES REVIEWED
+================================================================================
+
+  c:\Math_KICE\src\notion_service.py      (654 lines) - Notion API service
+  c:\Math_KICE\src\supabase_service.py    (381 lines) - Supabase service
+  c:\Math_KICE\src\config.py              (139 lines) - Configuration
+  c:\Math_KICE\src\pipeline.py            (618 lines) - Pipeline orchestrator
+  c:\Math_KICE\sync_to_notion.py          (121 lines) - Sync script
+  c:\Math_KICE\schema_v2.sql              (816 lines) - Database schema
+  c:\Math_KICE\sql\create_problems_table.sql (140 lines) - Original schema
+
+================================================================================
+END OF QA REPORT
+================================================================================

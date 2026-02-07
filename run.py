@@ -77,6 +77,18 @@ def main():
         help="설정 확인만 수행"
     )
 
+    parser.add_argument(
+        "--send-daily",
+        action="store_true",
+        help="일일 문제 발송 스케줄러 실행 (5분 간격 체크)"
+    )
+
+    parser.add_argument(
+        "--send-once",
+        action="store_true",
+        help="일일 문제 발송 1회 실행 후 종료"
+    )
+
     args = parser.parse_args()
 
     # 설정 확인 모드
@@ -85,9 +97,9 @@ def main():
         print("\n설정 확인 중...")
         print_config()
         if validate_config():
-            print("\n✓ 모든 설정이 올바릅니다.")
+            print("\n[OK] 모든 설정이 올바릅니다.")
         else:
-            print("\n✗ 설정 오류가 있습니다. .env 파일을 확인하세요.")
+            print("\n[ERROR] 설정 오류가 있습니다. .env 파일을 확인하세요.")
         return
 
     # 로컬 PDF 처리 모드
@@ -113,6 +125,16 @@ def main():
 
         synced = notion.sync_to_supabase(supabase)
         print(f"\n동기화 완료: {len(synced)}개")
+        return
+
+    # 일일 문제 발송
+    if args.send_daily or args.send_once:
+        from server.scheduler import DailyScheduler
+        scheduler = DailyScheduler()
+        if args.send_once:
+            scheduler.run_once()
+        else:
+            scheduler.run_loop(check_interval_minutes=args.interval)
         return
 
     # 메인 워크플로우 실행

@@ -1,22 +1,18 @@
 """
-KICE 수학 카카오톡 발송 서비스 - 5개 에이전트 시스템
+KICE Math Agent Team - 4개 에이전트 시스템
 
 에이전트 구성:
-- Commander: 총괄 지휘, 작업 분배, 에이전트 조율
-- Designer: 카카오 템플릿, 문제 이미지, UI
-- Developer: 카카오 API, Next.js, DB
-- QAOptimizer: 테스트, 버그 수정, 발송 모니터링
-- Business: 요금제, 결제, 마케팅
+- Commander: 총괄 지휘, 명령 디스패치, 상태 보고
+- PipelineAgent: PDF 처리 파이프라인 (Drive → 변환 → 업로드 → DB)
+- ContentAgent: Notion 동기화, 데이터 검증, 콘텐츠 QA
+- OpsAgent: 통계, 헬스체크, 모니터링
 """
 
 from .base import BaseAgent, Task, TaskStatus, TaskPriority, AgentMessage
 from .commander import CommanderAgent
-from .designer import DesignerAgent
-from .developer import DeveloperAgent
-from .qa_optimizer import QAOptimizerAgent
-from .business import BusinessAgent
-from .run_agents import AgentOrchestrator
-
+from .pipeline_agent import PipelineAgent
+from .content_agent import ContentAgent
+from .ops_agent import OpsAgent
 __all__ = [
     "BaseAgent",
     "Task",
@@ -24,9 +20,7 @@ __all__ = [
     "TaskPriority",
     "AgentMessage",
     "CommanderAgent",
-    "DesignerAgent",
-    "DeveloperAgent",
-    "QAOptimizerAgent",
-    "BusinessAgent",
-    "AgentOrchestrator",
+    "PipelineAgent",
+    "ContentAgent",
+    "OpsAgent",
 ]

@@ -280,6 +280,35 @@ class GoogleDriveService:
         folder = self.create_folder(folder_name, parent_id)
         return folder["id"]
 
+    def move_file(
+        self,
+        file_id: str,
+        new_parent_id: str,
+        old_parent_id: Optional[str] = None,
+    ):
+        """
+        파일을 다른 폴더로 이동
+
+        Args:
+            file_id: 이동할 파일 ID
+            new_parent_id: 새 부모 폴더 ID
+            old_parent_id: 기존 부모 폴더 ID (None이면 자동 감지)
+        """
+        if not old_parent_id:
+            file = self.service.files().get(
+                fileId=file_id, fields="parents"
+            ).execute()
+            old_parent_id = ",".join(file.get("parents", []))
+
+        self.service.files().update(
+            fileId=file_id,
+            addParents=new_parent_id,
+            removeParents=old_parent_id,
+            fields="id, parents",
+        ).execute()
+
+        print(f"파일 이동 완료: {file_id}")
+
     def get_new_files(
         self,
         folder_id: Optional[str] = None,

@@ -107,6 +107,27 @@ class BaseAgent(ABC):
         self.message_queue: List[AgentMessage] = []
         self.status = "idle"  # idle, working, waiting
         self.logs: List[str] = []
+        self._services_initialized = False
+
+    def _init_services(self):
+        """서비스 초기화 (각 에이전트에서 오버라이드)"""
+        pass
+
+    def ensure_services(self):
+        """서비스가 초기화되었는지 확인하고, 안 되어 있으면 초기화"""
+        if not self._services_initialized:
+            self._init_services()
+            self._services_initialized = True
+
+    def safe_execute(self, func, *args, **kwargs) -> Dict[str, Any]:
+        """안전한 서비스 호출 래퍼 (에러 로깅 포함)"""
+        try:
+            result = func(*args, **kwargs)
+            return {"success": True, "data": result, "error": None}
+        except Exception as e:
+            error_msg = f"{func.__name__}() 실패: {e}"
+            self.log(f"ERROR: {error_msg}")
+            return {"success": False, "data": None, "error": error_msg}
 
     def log(self, message: str):
         """로그 기록"""
