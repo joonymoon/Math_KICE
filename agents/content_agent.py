@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional, Any, Dict, List
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from .base import BaseAgent, Task, TaskStatus, AgentMessage
 
@@ -597,6 +597,150 @@ class ContentAgent(BaseAgent):
             "errors": errors if errors else None,
         }
 
+    def set_publish_schedule(
+        self,
+        year: Optional[int] = None,
+        exam: Optional[str] = None,
+        problem_id: Optional[str] = None,
+        interval_hours: int = 24,
+        published_at: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        문제 공개 스케줄 설정 (시간차 힌트 공개)
+
+        Args:
+            year: 연도 필터
+            exam: 시험 유형 필터
+            problem_id: 단일 문제 ID
+            interval_hours: 힌트 단계 간 간격 (시간, 기본 24)
+            published_at: 공개 시각 (ISO format, None이면 현재 시각)
+            dry_run: True면 미리보기만
+
+        Returns:
+            스케줄 설정 결과
+        """
+        self.ensure_services()
+        self.status = "working"
+        self.log(f"공개 스케줄 설정 (year={year}, exam={exam}, interval={interval_hours}h)")
+
+        # 대상 문제 조회
+        if problem_id:
+            problem = self._db.get_problem(problem_id)
+            problems = [problem] if problem else []
+        else:
+            problems = self._db.get_problems_by_filter(year=year, exam=exam)
+
+        if not problems:
+            self.status = "idle"
+            return {"success": True, "updated": 0, "message": "대상 문제 없음"}
+
+        # 공개 시각 결정
+        if published_at:
+            pub_time = datetime.fromisoformat(published_at)
+            if pub_time.tzinfo is None:
+                pub_time = pub_time.replace(tzinfo=timezone.utc)
+        else:
+            pub_time = datetime.now(timezone.utc)
+
+        if dry_run:
+            preview = []
+            for p in problems:
+                pid = p["problem_id"]
+                preview.append({
+                    "problem_id": pid,
+                    "published_at": pub_time.isoformat(),
+                    "hint_interval_hours": interval_hours,
+                    "hint1_at": pub_time.isoformat(),
+                    "hint2_at": (pub_time + timedelta(hours=interval_hours)).isoformat(),
+                    "hint3_solution_at": (pub_time + timedelta(hours=interval_hours * 2)).isoformat(),
+                })
+            self.status = "idle"
+            return {
+                "success": True,
+                "dry_run": True,
+                "targets": len(preview),
+                "preview": preview,
+            }
+
+        # 실제 업데이트
+        updated = 0
+        errors = []
+        for p in problems:
+            pid = p["problem_id"]
+            try:
+                self._db.client.table("problems").update({
+                    "published_at": pub_time.isoformat(),
+                    "hint_interval_hours": interval_hours,
+                }).eq("problem_id", pid).execute()
+                updated += 1
+            except Exception as e:
+                errors.append({"problem_id": pid, "error": str(e)[:200]})
+
+        self.status = "idle"
+        self.log(f"스케줄 설정 완료: {updated}개, 오류 {len(errors)}개")
+
+        return {
+            "success": True,
+            "updated": updated,
+            "errors_count": len(errors),
+            "total": len(problems),
+            "published_at": pub_time.isoformat(),
+            "hint_interval_hours": interval_hours,
+            "schedule": {
+                "hint1": pub_time.isoformat(),
+                "hint2": (pub_time + timedelta(hours=interval_hours)).isoformat(),
+                "hint3_solution": (pub_time + timedelta(hours=interval_hours * 2)).isoformat(),
+            },
+            "errors": errors if errors else None,
+        }
+
+    def get_publish_schedule(
+        self,
+        year: Optional[int] = None,
+        exam: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        문제 공개 스케줄 조회
+
+        Returns:
+            스케줄 현황
+        """
+        self.ensure_services()
+        self.log(f"공개 스케줄 조회 (year={year}, exam={exam})")
+
+        problems = self._db.get_problems_by_filter(year=year, exam=exam)
+
+        scheduled = []
+        unscheduled = []
+        for p in problems:
+            pid = p["problem_id"]
+            pub = p.get("published_at")
+            if pub:
+                interval = p.get("hint_interval_hours", 24) or 24
+                if isinstance(pub, str):
+                    pub_dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+                else:
+                    pub_dt = pub
+                scheduled.append({
+                    "problem_id": pid,
+                    "published_at": pub_dt.isoformat(),
+                    "hint_interval_hours": interval,
+                    "hint2_at": (pub_dt + timedelta(hours=interval)).isoformat(),
+                    "hint3_at": (pub_dt + timedelta(hours=interval * 2)).isoformat(),
+                })
+            else:
+                unscheduled.append(pid)
+
+        return {
+            "success": True,
+            "total": len(problems),
+            "scheduled": len(scheduled),
+            "unscheduled": len(unscheduled),
+            "schedule_items": scheduled,
+            "unscheduled_ids": unscheduled,
+        }
+
     def get_review_status(self) -> Dict[str, Any]:
         """
         검수 현황 보고
@@ -644,6 +788,20 @@ class ContentAgent(BaseAgent):
                 year=params.get("year"),
                 exam=params.get("exam"),
                 dry_run=params.get("dry_run", False),
+            )
+        elif "schedule" in title or "스케줄" in title or "공개" in title:
+            if "set" in title or "설정" in title:
+                return self.set_publish_schedule(
+                    year=params.get("year"),
+                    exam=params.get("exam"),
+                    problem_id=params.get("problem_id"),
+                    interval_hours=params.get("interval_hours", 24),
+                    published_at=params.get("published_at"),
+                    dry_run=params.get("dry_run", False),
+                )
+            return self.get_publish_schedule(
+                year=params.get("year"),
+                exam=params.get("exam"),
             )
         elif "review" in title or "검수" in title:
             return self.get_review_status()

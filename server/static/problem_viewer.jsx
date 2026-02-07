@@ -1,5 +1,30 @@
 // 수능 문제 뷰어 - 카카오톡 웹뷰용
 // Props: problemData (from server)
+// Requires: KaTeX CSS + JS + auto-render loaded in host page
+
+// KaTeX auto-render helper
+function renderMath(element) {
+  if (element && window.renderMathInElement) {
+    window.renderMathInElement(element, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true },
+      ],
+      throwOnError: false,
+    });
+  }
+}
+
+// Hook: auto-render KaTeX when content changes
+function useMathRender(deps) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (ref.current) renderMath(ref.current);
+  }, deps);
+  return ref;
+}
 
 // Toast notification component
 function Toast({ message, type, onClose }) {
@@ -25,16 +50,47 @@ function Toast({ message, type, onClose }) {
   );
 }
 
+// Locked hint card
+function LockedHintCard({ level, message }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span
+        className="flex-shrink-0 w-5 h-5 rounded-full text-white text-xs font-bold flex items-center justify-center mt-0.5"
+        style={{ background: '#9ca3af' }}
+      >
+        {level}
+      </span>
+      <div
+        className="flex-1 px-3 py-2 rounded-lg text-sm"
+        style={{
+          background: 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
+          border: '2px dashed #9ca3af',
+          color: '#6b7280',
+        }}
+      >
+        <span style={{ marginRight: 6 }}>&#128274;</span>
+        {message}
+      </div>
+    </div>
+  );
+}
+
 function ProblemViewer({ problemData }) {
   const [scale, setScale] = React.useState(1);
   const [selectedAnswer, setSelectedAnswer] = React.useState(null);
   const [userAnswer, setUserAnswer] = React.useState('');
   const [showResult, setShowResult] = React.useState(false);
   const [hintLevel, setHintLevel] = React.useState(0);
+  const [hints, setHints] = React.useState([]);    // {level, text, locked?, message?}
   const [result, setResult] = React.useState(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isLoadingHint, setIsLoadingHint] = React.useState(false);
   const [toast, setToast] = React.useState(null);
   const [resultVisible, setResultVisible] = React.useState(false);
+
+  // KaTeX refs
+  const hintRef = useMathRender([hints]);
+  const resultRef = useMathRender([result, showResult]);
 
   const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 2.5));
   const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.5));
@@ -57,7 +113,6 @@ function ProblemViewer({ problemData }) {
     const answer = problemData.is_multiple_choice ? selectedAnswer : userAnswer;
 
     if (!answer) {
-      // H4: toast instead of alert
       showToast('답을 선택하거나 입력해주세요.', 'error');
       return;
     }
@@ -82,28 +137,63 @@ function ProblemViewer({ problemData }) {
       requestAnimationFrame(() => setResultVisible(true));
     } catch (error) {
       console.error('Submit error:', error);
-      // H4: toast instead of alert
       showToast('제출 중 오류가 발생했습니다.', 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleShowHint = () => {
+  // API-based hint loading with time-lock support
+  const handleShowHint = async () => {
     const nextLevel = hintLevel + 1;
-    if (nextLevel <= 3) {
-      setHintLevel(nextLevel);
+    if (nextLevel > 3 || isLoadingHint) return;
+
+    setIsLoadingHint(true);
+
+    try {
+      const response = await fetch(`/problem/hint/${nextLevel}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ problem_id: problemData.problem_id })
+      });
+
+      const data = await response.json();
+
+      if (data.locked) {
+        // Show locked hint card but don't advance level
+        setHints(prev => [...prev.filter(h => h.level !== nextLevel), {
+          level: nextLevel,
+          locked: true,
+          message: data.message,
+        }]);
+        showToast(data.message, 'info');
+      } else {
+        // Show unlocked hint and advance level
+        setHints(prev => [...prev.filter(h => h.level !== nextLevel), {
+          level: nextLevel,
+          text: data.hint_text || data.text,
+          locked: false,
+        }]);
+        setHintLevel(nextLevel);
+      }
+    } catch (error) {
+      // Fallback to props-based hints if API fails
+      console.warn('Hint API failed, falling back to props:', error);
+      const propHints = { 1: problemData.hint1, 2: problemData.hint2, 3: problemData.hint3 };
+      const text = propHints[nextLevel];
+      if (text) {
+        setHints(prev => [...prev, { level: nextLevel, text, locked: false }]);
+        setHintLevel(nextLevel);
+      } else {
+        showToast('힌트를 불러올 수 없습니다.', 'error');
+      }
+    } finally {
+      setIsLoadingHint(false);
     }
   };
 
-  // C2: Get ALL hints up to current level (accumulate)
-  const getHints = () => {
-    const hints = [];
-    if (hintLevel >= 1 && problemData.hint1) hints.push({ level: 1, text: problemData.hint1 });
-    if (hintLevel >= 2 && problemData.hint2) hints.push({ level: 2, text: problemData.hint2 });
-    if (hintLevel >= 3 && problemData.hint3) hints.push({ level: 3, text: problemData.hint3 });
-    return hints;
-  };
+  // Sort hints by level for display
+  const sortedHints = [...hints].sort((a, b) => a.level - b.level);
 
   const examName = {
     'CSAT': '수능',
@@ -124,7 +214,9 @@ function ProblemViewer({ problemData }) {
     '상': { bg: '#fee2e2', text: '#dc2626' },
   }[difficultyLabel] || { bg: '#e5e7eb', text: '#4b5563' };
 
-  const hints = getHints();
+  // Check if next hint level has a locked card already shown
+  const nextHintLevel = hintLevel + 1;
+  const lockedHintShown = sortedHints.some(h => h.level === nextHintLevel && h.locked);
 
   return (
     <div className="bg-gray-100 min-h-screen flex flex-col">
@@ -144,6 +236,8 @@ function ProblemViewer({ problemData }) {
           to { opacity: 1; transform: translateY(0); }
         }
         .result-enter { animation: resultSlideUp 0.4s ease-out forwards; }
+        .math-content .katex { font-size: 1em; }
+        .math-content .katex-display { margin: 0.5em 0; }
       `}</style>
 
       {/* 헤더 */}
@@ -232,22 +326,26 @@ function ProblemViewer({ problemData }) {
       </div>
 
       {/* C3: Hints visible BOTH before and after submission */}
-      {hints.length > 0 && (
-        <div className="bg-yellow-50 border-t border-yellow-200 px-4 py-3 space-y-2">
-          {hints.map(h => (
-            <div key={h.level} className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-yellow-400 text-white text-xs font-bold flex items-center justify-center mt-0.5">
-                {h.level}
-              </span>
-              <div className="text-sm text-yellow-900">{h.text}</div>
-            </div>
+      {sortedHints.length > 0 && (
+        <div ref={hintRef} className="bg-yellow-50 border-t border-yellow-200 px-4 py-3 space-y-2">
+          {sortedHints.map(h => (
+            h.locked ? (
+              <LockedHintCard key={h.level} level={h.level} message={h.message} />
+            ) : (
+              <div key={h.level} className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-yellow-400 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                  {h.level}
+                </span>
+                <div className="text-sm text-yellow-900 math-content" dangerouslySetInnerHTML={{ __html: h.text }} />
+              </div>
+            )
           ))}
         </div>
       )}
 
       {/* 결과 표시 - L3: fade-in animation */}
       {showResult && result && (
-        <div className={`px-4 py-3 text-white ${resultVisible ? 'result-enter' : ''} ${result.is_correct ? 'bg-green-500' : 'bg-red-500'}`}>
+        <div ref={resultRef} className={`px-4 py-3 text-white ${resultVisible ? 'result-enter' : ''} ${result.is_correct ? 'bg-green-500' : 'bg-red-500'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {result.is_correct ? (
@@ -277,7 +375,7 @@ function ProblemViewer({ problemData }) {
               {result.solution ? (
                 <div>
                   <div className="font-bold mb-1">풀이:</div>
-                  <div className="opacity-90">{result.solution}</div>
+                  <div className="opacity-90 math-content" dangerouslySetInnerHTML={{ __html: result.solution }} />
                 </div>
               ) : (
                 <div className="opacity-90">
@@ -287,9 +385,10 @@ function ProblemViewer({ problemData }) {
               {hintLevel < 3 && (
                 <button
                   onClick={handleShowHint}
+                  disabled={isLoadingHint}
                   className="mt-2 px-3 py-1 bg-white/20 rounded text-xs font-medium hover:bg-white/30 transition"
                 >
-                  힌트 더 보기 ({hintLevel + 1}/3)
+                  {isLoadingHint ? '로딩...' : `힌트 더 보기 (${hintLevel + 1}/3)`}
                 </button>
               )}
             </div>
@@ -299,7 +398,7 @@ function ProblemViewer({ problemData }) {
           {result.is_correct && result.solution && (
             <div className="mt-2 pt-2 border-t border-white/30">
               <div className="text-sm font-bold mb-1">풀이:</div>
-              <div className="text-sm opacity-90">{result.solution}</div>
+              <div className="text-sm opacity-90 math-content" dangerouslySetInnerHTML={{ __html: result.solution }} />
             </div>
           )}
         </div>
@@ -369,15 +468,16 @@ function ProblemViewer({ problemData }) {
       <div className="bg-white border-t p-4 sticky bottom-0 z-30">
         {!showResult ? (
           <div className="flex gap-3">
-            {hintLevel < 3 && (
+            {hintLevel < 3 && !lockedHintShown && (
               <button
                 onClick={handleShowHint}
+                disabled={isLoadingHint}
                 className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
-                힌트 {hintLevel + 1}/3
+                {isLoadingHint ? '로딩...' : `힌트 ${hintLevel + 1}/3`}
               </button>
             )}
             <button

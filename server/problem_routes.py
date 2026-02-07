@@ -2360,6 +2360,28 @@ async def view_problem(request: Request, problem_id: str):
                 const result = await response.json();
                 console.log('[Hint] Received hint:', result);
 
+                // Check if hint is time-locked
+                if (result.locked) {{
+                    const lockedCard = document.createElement('div');
+                    lockedCard.className = 'hint-card';
+                    lockedCard.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+                    lockedCard.style.border = '2px dashed #9ca3af';
+                    lockedCard.innerHTML = `
+                        <h3>
+                            <span class="hint-badge" style="background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%);">힌트 ${{nextLevel}}</span>
+                            <span>&#128274;</span>
+                        </h3>
+                        <p style="color: #6b7280; font-weight: 500;">${{result.message}}</p>
+                    `;
+                    hintContainer.appendChild(lockedCard);
+                    lockedCard.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+
+                    // Keep button enabled but don't advance level
+                    hintBtn.disabled = false;
+                    hintBtnText.textContent = `힌트 ${{nextLevel}}단계 보기`;
+                    return;
+                }}
+
                 // Display hint card
                 const hintCard = document.createElement('div');
                 hintCard.className = 'hint-card';
@@ -2513,15 +2535,60 @@ async def submit_answer(request: Request, body: SubmitAnswerRequest):
 @router.post("/hint/{level}")
 async def get_hint(request: Request, level: int, body: HintRequest):
     """
-    Get hint for a problem (for problem viewer)
-    Progressive hints: level 1, 2, or 3
+    Get hint for a problem (for problem viewer).
+    Progressive hints: level 1, 2, or 3.
+
+    Time-based unlock (if published_at is set):
+      - Hint 1: available immediately at published_at
+      - Hint 2: published_at + hint_interval_hours
+      - Hint 3 + solution: published_at + hint_interval_hours * 2
+    If published_at is NULL, all hints are available immediately.
     """
     if level not in [1, 2, 3]:
         raise HTTPException(status_code=400, detail="Hint level must be 1, 2, or 3")
 
     supabase = SupabaseService()
 
-    # Get hint from hints table
+    # ── Time-based unlock check ──
+    try:
+        problem_result = supabase.client.table("problems") \
+            .select("published_at, hint_interval_hours") \
+            .eq("problem_id", body.problem_id) \
+            .single() \
+            .execute()
+
+        if problem_result.data:
+            published_at = problem_result.data.get("published_at")
+            if published_at and level > 1:
+                from datetime import datetime, timedelta, timezone
+                if isinstance(published_at, str):
+                    published = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                else:
+                    published = published_at
+                if published.tzinfo is None:
+                    published = published.replace(tzinfo=timezone.utc)
+
+                interval = problem_result.data.get("hint_interval_hours", 24) or 24
+                unlock_at = published + timedelta(hours=interval * (level - 1))
+                now = datetime.now(timezone.utc)
+
+                if now < unlock_at:
+                    remaining = unlock_at - now
+                    hours_left = int(remaining.total_seconds() // 3600)
+                    mins_left = int((remaining.total_seconds() % 3600) // 60)
+                    time_msg = f"{hours_left}시간 {mins_left}분 후" if hours_left > 0 else f"{mins_left}분 후"
+
+                    print(f"[Get Hint] LOCKED: problem={body.problem_id}, level={level}, unlocks in {time_msg}")
+                    return {
+                        "locked": True,
+                        "level": level,
+                        "unlock_at": unlock_at.isoformat(),
+                        "message": f"힌트 {level}단계는 {time_msg} 공개됩니다."
+                    }
+    except Exception:
+        pass  # Column may not exist yet — skip time check, allow all hints
+
+    # ── Get hint from hints table ──
     try:
         result = supabase.client.table("hints") \
             .select("hint_text, hint_type, stage") \
@@ -2553,6 +2620,7 @@ async def get_hint(request: Request, level: int, body: HintRequest):
                     print(f"[Get Hint] Error tracking hint request: {e}")
 
         return {
+            "locked": False,
             "hint_text": hint_data.get("hint_text"),
             "hint_type": hint_data.get("hint_type"),
             "level": level

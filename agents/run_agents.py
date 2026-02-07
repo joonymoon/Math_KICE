@@ -33,8 +33,14 @@ KICE Math Agent Team - CLI 인터페이스
 """
 
 import sys
+import io
 import json
 from pathlib import Path
+
+# Windows cp949 인코딩 문제 해결
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # src 모듈 경로
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -127,6 +133,20 @@ def cmd_content(team: AgentTeam, args):
         )
     elif action == "review-status":
         result = team.content.get_review_status()
+    elif action == "set-schedule":
+        result = team.content.set_publish_schedule(
+            year=args.year,
+            exam=args.exam,
+            problem_id=args.problem_id,
+            interval_hours=args.interval or 24,
+            published_at=args.published_at,
+            dry_run=args.dry_run,
+        )
+    elif action == "view-schedule":
+        result = team.content.get_publish_schedule(
+            year=args.year,
+            exam=args.exam,
+        )
     else:
         print(f"알 수 없는 액션: {action}")
         return
@@ -238,7 +258,7 @@ def main():
     p_content = subparsers.add_parser("content", help="콘텐츠 관리 (Notion 동기화/검증)")
     p_content.add_argument(
         "action",
-        choices=["sync-to-notion", "sync-from-notion", "validate", "fill-content", "review-status"],
+        choices=["sync-to-notion", "sync-from-notion", "validate", "fill-content", "review-status", "set-schedule", "view-schedule"],
         help="실행할 액션",
     )
     p_content.add_argument("--year", type=int, help="연도 필터")
@@ -246,6 +266,8 @@ def main():
     p_content.add_argument("--problem-id", help="단일 문제 ID")
     p_content.add_argument("--filter-status", help="상태 필터 (ready, needs_review 등)")
     p_content.add_argument("--dry-run", action="store_true", help="미리보기")
+    p_content.add_argument("--interval", type=int, help="힌트 공개 간격 (시간, 기본 24)")
+    p_content.add_argument("--published-at", help="공개 시각 (ISO format, 예: 2026-02-10T09:00:00)")
     p_content.set_defaults(func=cmd_content)
 
     # ─── ops ───
